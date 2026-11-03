@@ -77,6 +77,25 @@ rcn-mstr --html out/example
 
 Results land in `rcn-out/<domain>-<timestamp>/` (or `-o`). **Start at `index.json`.**
 
+## Commands
+
+| command | purpose |
+|---|---|
+| `rcn-mstr DOMAIN...` | run recon (modes: `-m passive\|normal\|deep`) |
+| `rcn-mstr -f roots.txt` | bulk: one root domain per line |
+| `rcn-mstr --self-test` | run the whole pipeline against a built-in mock internet (no egress) |
+| `rcn-mstr --diff OLD NEW` | attack-surface drift between two runs (exit 10 on change) |
+| `rcn-mstr --agent-plan DIR` | print the ranked attack plan (JSON, with agent prompts) |
+| `rcn-mstr --query DIR "select …"` | query a run with the store DSL |
+| `rcn-mstr --serve DIR` | read-only JSON API over a run (for an AI harness) |
+| `rcn-mstr --html DIR` | (re)generate the interactive report |
+| `rcn-mstr --list-modules` | list modules |
+| `rcn-mstr --update-fingerprints` | refresh takeover fingerprints |
+
+Useful flags: `-o OUT`, `--modules a,b` / `--skip a,b`, `-w WORDLIST`, `--max-rounds N`,
+`-c CONCURRENCY`, `--rate N` (per-host req/s), `-k keys.txt`, `--config file`, `-s scope.txt`
+`-x exclude.txt`, `--expand-scope`, `--nuclei`, `--allow-private`, `--fail-on SEVERITY`, `-v`.
+
 ## Modes
 
 - `passive` — third-party data only; no packets to the target (CT logs, passive DNS, archives).
