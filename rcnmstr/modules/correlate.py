@@ -50,6 +50,13 @@ class Correlate(Module):
                             {"services": cl["services"][:40]}, self.name, ["cluster", "favicon"],
                             dedupe_key="fav:" + cl["favicon_mmh3"])
 
+        # recompute the attack-surface summary now that cluster findings exist (analysis ran earlier)
+        try:
+            from .analysis import Analysis
+            Analysis()._summary(ctx)
+        except Exception:  # noqa
+            pass
+
         # attack hypotheses
         hyps = HYP.generate(ctx, g, clusters)
         ctx.hypotheses = hyps
