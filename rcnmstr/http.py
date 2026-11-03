@@ -9,10 +9,51 @@ import ssl
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+import asyncio
+import time
+from collections import defaultdict
+from urllib.parse import urlparse
+
 import aiohttp
 from aiohttp.abc import AbstractResolver
 
 from .util import is_ip
+
+
+class HostRateLimiter:
+    """Per-host politeness: cap requests/sec and concurrent in-flight per host.
+
+    rate <= 0 disables rate limiting (only the per-host concurrency cap applies).
+    """
+
+    def __init__(self, rate: float = 0.0, per_host: int = 8):
+        self.rate = rate
+        self.min_interval = (1.0 / rate) if rate and rate > 0 else 0.0
+        self.per_host = max(1, per_host)
+        self._last: dict = defaultdict(float)
+        self._sem: dict = {}
+        self._lock = asyncio.Lock()
+
+    def _sem_for(self, host: str) -> asyncio.Semaphore:
+        s = self._sem.get(host)
+        if s is None:
+            s = self._sem[host] = asyncio.Semaphore(self.per_host)
+        return s
+
+    async def acquire(self, host: str):
+        await self._sem_for(host).acquire()
+        if self.min_interval:
+            async with self._lock:
+                now = time.monotonic()
+                wait = self._last[host] + self.min_interval - now
+                self._last[host] = max(now, self._last[host] + self.min_interval)
+            if wait > 0:
+                await asyncio.sleep(wait)
+
+    def release(self, host: str):
+        s = self._sem.get(host)
+        if s is not None:
+            s.release()
 
 log = logging.getLogger("rcnmstr.http")
 
@@ -78,9 +119,10 @@ class Resp:
 
 
 def make_probe_session(resolver, concurrency: int = 100, timeout: float = 10.0, proxy: Optional[str] = None,
-                       user_agent: str = UA, headers: Optional[dict] = None) -> aiohttp.ClientSession:
+                       user_agent: str = UA, headers: Optional[dict] = None, rate: float = 0.0,
+                       per_host: int = 10) -> aiohttp.ClientSession:
     conn = aiohttp.TCPConnector(ssl=False, resolver=CacheResolver(resolver), limit=concurrency,
-                                limit_per_host=10, use_dns_cache=False, enable_cleanup_closed=True,
+                                limit_per_host=per_host, use_dns_cache=False, enable_cleanup_closed=True,
                                 force_close=False)
     h = {"User-Agent": user_agent, "Accept": "*/*", "Accept-Language": "en-US,en;q=0.8"}
     h.update(headers or {})
@@ -88,6 +130,7 @@ def make_probe_session(resolver, concurrency: int = 100, timeout: float = 10.0, 
                               headers=h, cookie_jar=aiohttp.DummyCookieJar(), trust_env=False,
                               auto_decompress=True)
     s._rcn_proxy = proxy  # type: ignore[attr-defined]
+    s._rcn_limiter = HostRateLimiter(rate, per_host) if (rate or per_host) else None  # type: ignore[attr-defined]
     return s
 
 
@@ -110,6 +153,10 @@ async def fetch(session: aiohttp.ClientSession, url: str, method: str = "GET", h
         kw["proxy"] = proxy
     if server_hostname:
         kw["server_hostname"] = server_hostname
+    limiter = getattr(session, "_rcn_limiter", None)
+    host = urlparse(url).netloc.split("@")[-1].split(":")[0]
+    if limiter:
+        await limiter.acquire(host)
     loop = asyncio.get_running_loop()
     t0 = loop.time()
     try:
@@ -125,6 +172,9 @@ async def fetch(session: aiohttp.ClientSession, url: str, method: str = "GET", h
             RuntimeError) as e:
         log.debug("fetch %s failed: %s", url, e)
         return None
+    finally:
+        if limiter:
+            limiter.release(host)
 
 
 async def api_get(session: aiohttp.ClientSession, url: str, params=None, headers=None, retries: int = 2,

@@ -240,6 +240,7 @@ class DNSRecords(Module):
         rec["saas_verification"] = sorted(saas)
         await self._email(ctx, zone, rec)
         await self._axfr(ctx, zone, rec)
+        await self._nsec_walk(ctx, zone, rec)
         ctx.emit("zones", rec)
 
     async def _email(self, ctx, zone, rec):
@@ -290,6 +291,26 @@ class DNSRecords(Module):
         if "multiple_spf_records" in spf["issues"] or "too_many_dns_lookups" in spf["issues"]:
             ctx.finding("email_spoofing", "low", "high", zone, "SPF permerror (multiple records or >10 lookups)",
                         {"records": spf["records"], "lookups": lookups}, self.name, ["email"])
+
+    async def _nsec_walk(self, ctx, zone, rec):
+        try:
+            names, info = await ctx.resolver.nsec_walk(zone)
+        except Exception as e:  # noqa
+            return
+        rec["dnssec"] = info
+        if info.get("method") == "nsec3":
+            rec.setdefault("dnssec", {})["note"] = "NSEC3 in use (hashed; not plaintext-walkable)"
+            ctx.finding("dnssec", "info", "high", zone, "Zone uses NSEC3 (DNSSEC) - hashed names present",
+                        info, self.name, ["dns", "dnssec", "nsec3"], dedupe_key="nsec3:" + zone,
+                        next_steps=["Collect NSEC3 hashes + params and crack offline (nsec3walker/hashcat 8300)"])
+            return
+        if names:
+            n = ctx.add_hosts([x for x in names if ctx.scope.in_scope(x)], "nsec")
+            ctx.finding("dns_enum", "medium", "high", zone,
+                        f"DNSSEC NSEC zone-walking enumerated {len(names)} names",
+                        {"count": len(names), "sample": names[:40], "new_hosts": n, "queries": info["queries"]},
+                        self.name, ["dns", "dnssec", "nsec"], dedupe_key="nsec:" + zone,
+                        next_steps=["All zone names are now known without brute force"])
 
     async def _axfr(self, ctx, zone, rec):
         ns_ips = []

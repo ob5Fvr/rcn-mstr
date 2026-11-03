@@ -407,6 +407,42 @@ class Resolver:
         except (OSError, asyncio.TimeoutError, ConnectionError, wire.DNSParseError) as e:
             return Answer(name, qtype, "TIMEOUT" if isinstance(e, asyncio.TimeoutError) else "ERROR", server=server)
 
+    async def nsec_walk(self, zone: str, max_names: int = 5000):
+        """Enumerate a DNSSEC zone via NSEC chain walking (works on zones with NSEC, not NSEC3).
+
+        Returns (names, info). Each NSEC record names the *next* existing owner, so following the
+        chain reveals every name in the zone without brute force.
+        """
+        zone = wire.normalize(zone)
+        names: set = set()
+        info = {"supported": False, "method": None, "queries": 0}
+        # probe for DNSSEC: does a non-existent name return an NSEC/NSEC3 record in authority?
+        probe = await self.query(f"{random_label()}.{zone}", "A")
+        auth_types = {r.type for r in probe.authority}
+        if "NSEC3" in auth_types:
+            info.update(supported=True, method="nsec3")
+            return sorted(names), info  # NSEC3 names are hashed; handled separately
+        current = zone
+        info["method"] = "nsec"
+        for _ in range(max_names):
+            ans = await self.query(current, "NSEC")
+            info["queries"] += 1
+            nsec = [r for r in ans.answers + ans.authority if r.type == "NSEC"]
+            if not nsec:
+                # try asking for a name just after current to pull the covering NSEC
+                ans2 = await self.query(f"\\000.{current}", "NSEC")
+                nsec = [r for r in ans2.answers + ans2.authority if r.type == "NSEC"]
+                if not nsec:
+                    break
+            nxt = wire.normalize(nsec[0].data["next"])
+            if nxt == zone or nxt in names or not nxt.endswith(zone):
+                info["supported"] = True
+                break
+            names.add(nxt)
+            info["supported"] = True
+            current = nxt
+        return sorted(names), info
+
     async def axfr(self, server: str, zone: str, timeout: float = 10.0, max_records: int = 200000):
         """Attempt a zone transfer. Returns list of RR dicts, or None if refused/failed."""
         addr = _parse_server(server)

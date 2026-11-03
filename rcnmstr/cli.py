@@ -77,6 +77,8 @@ def build_parser():
     p.add_argument("--dns-concurrency", type=int, default=400)
     p.add_argument("-t", "--timeout", type=float, default=10.0, help="per-request timeout seconds")
     p.add_argument("--proxy", help="HTTP proxy for probe traffic (e.g. http://127.0.0.1:8080)")
+    p.add_argument("--rate", type=float, default=0.0, help="max HTTP requests/sec PER HOST (0=unlimited)")
+    p.add_argument("--per-host", type=int, default=10, help="max concurrent connections per host")
     p.add_argument("--top-ports", type=int, default=100, help="deep mode: number of top ports to scan")
     p.add_argument("--ports", help="deep mode: explicit comma port list (overrides --top-ports)")
     p.add_argument("--http-ports", default="80,443", help="ports probed for HTTP in all modes")
@@ -205,6 +207,8 @@ def main(argv=None):
         allow_private=args.allow_private,
         expand_scope=args.expand_scope,
         nuclei=args.nuclei,
+        rate=args.rate,
+        per_host=args.per_host,
         tools=not args.no_tools,
         user_agent=args.user_agent,
         scope_file=args.scope,

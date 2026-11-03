@@ -64,7 +64,8 @@ async def run(cfg: Config) -> Context:
         ctx.stats["dns_mode"] = ctx.resolver.mode
         ctx.stats["dns_health"] = ctx.resolver.health_report
         ctx.probe = make_probe_session(ctx.resolver, concurrency=cfg.concurrency, timeout=cfg.timeout,
-                                       proxy=cfg.proxy, **({"user_agent": cfg.user_agent} if cfg.user_agent else {}))
+                                       proxy=cfg.proxy, rate=cfg.rate, per_host=cfg.per_host,
+                                       **({"user_agent": cfg.user_agent} if cfg.user_agent else {}))
         for r in scope.roots:
             ctx.add_host(r, "input")
         mods = select_modules(cfg, ctx)

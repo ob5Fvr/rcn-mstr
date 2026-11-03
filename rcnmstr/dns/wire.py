@@ -9,8 +9,8 @@ from typing import List, Optional, Tuple
 
 QTYPES = {
     "A": 1, "NS": 2, "CNAME": 5, "SOA": 6, "PTR": 12, "MX": 15, "TXT": 16,
-    "AAAA": 28, "SRV": 33, "OPT": 41, "DS": 43, "RRSIG": 46, "DNSKEY": 48,
-    "CAA": 257, "AXFR": 252, "ANY": 255,
+    "AAAA": 28, "SRV": 33, "OPT": 41, "DS": 43, "RRSIG": 46, "NSEC": 47, "DNSKEY": 48,
+    "NSEC3": 50, "NSEC3PARAM": 51, "TLSA": 52, "CAA": 257, "AXFR": 252, "ANY": 255,
 }
 QTYPE_NAMES = {v: k for k, v in QTYPES.items()}
 
@@ -194,7 +194,57 @@ def _parse_rdata(data: bytes, off: int, rdlen: int, rtype: int):
         flags, tlen = rd[0], rd[1]
         return {"flags": flags, "tag": rd[2:2 + tlen].decode("latin-1"),
                 "value": rd[2 + tlen:].decode("utf-8", "replace")}
+    if rtype == 47:  # NSEC: next owner name + type bitmap
+        next_name, o = read_name(data, off)
+        return {"next": next_name, "types": _type_bitmap(data[o:end])}
+    if rtype == 50:  # NSEC3: hash alg, flags, iterations, salt, next hashed owner, type bitmap
+        alg, flags3, iterations = rd[0], rd[1], struct.unpack(">H", rd[2:4])[0]
+        salt_len = rd[4]
+        salt = rd[5:5 + salt_len]
+        o = 5 + salt_len
+        hlen = rd[o]
+        o += 1
+        next_hashed = rd[o:o + hlen]
+        return {"algorithm": alg, "flags": flags3, "iterations": iterations, "salt": salt.hex(),
+                "next_hashed": _b32hex(next_hashed), "types": _type_bitmap(rd[o + hlen:])}
+    if rtype == 51:  # NSEC3PARAM
+        salt_len = rd[4]
+        return {"algorithm": rd[0], "flags": rd[1], "iterations": struct.unpack(">H", rd[2:4])[0],
+                "salt": rd[5:5 + salt_len].hex()}
     return rd.hex()
+
+
+def _type_bitmap(rd: bytes) -> list:
+    """Decode an NSEC/NSEC3 type-bitmap into a list of record-type names."""
+    out, i = [], 0
+    while i + 2 <= len(rd):
+        window, blen = rd[i], rd[i + 1]
+        block = rd[i + 2:i + 2 + blen]
+        for bi, byte in enumerate(block):
+            for bit in range(8):
+                if byte & (0x80 >> bit):
+                    t = window * 256 + bi * 8 + bit
+                    out.append(qtype_name(t))
+        i += 2 + blen
+    return out
+
+
+_B32HEX = "0123456789abcdefghijklmnopqrstuv"
+
+
+def _b32hex(data: bytes) -> str:
+    """RFC4648 base32hex (lowercase, no padding) - the encoding NSEC3 owner hashes use."""
+    bits, out = 0, []
+    val = 0
+    for b in data:
+        val = (val << 8) | b
+        bits += 8
+        while bits >= 5:
+            bits -= 5
+            out.append(_B32HEX[(val >> bits) & 0x1F])
+    if bits:
+        out.append(_B32HEX[(val << (5 - bits)) & 0x1F])
+    return "".join(out)
 
 
 def _parse_rr(data: bytes, off: int) -> Tuple[RR, int]:
@@ -267,9 +317,27 @@ def encode_rr(name: str, rtype: str, data, ttl: int = 60) -> bytes:
     elif t == 257:
         tag = data["tag"].encode()
         rd = bytes([data.get("flags", 0), len(tag)]) + tag + data["value"].encode()
+    elif t == 47:  # NSEC
+        rd = encode_name(data["next"]) + encode_type_bitmap(data.get("types", ["A", "RRSIG", "NSEC"]))
     else:
         rd = bytes.fromhex(data)
     return encode_name(name) + struct.pack(">HHIH", t, 1, ttl, len(rd)) + rd
+
+
+def encode_type_bitmap(types) -> bytes:
+    nums = sorted(qtype_num(t) for t in types)
+    windows: dict = {}
+    for n in nums:
+        w, bit = n // 256, n % 256
+        windows.setdefault(w, bytearray())
+        idx = bit // 8
+        while len(windows[w]) <= idx:
+            windows[w].append(0)
+        windows[w][idx] |= 0x80 >> (bit % 8)
+    out = b""
+    for w in sorted(windows):
+        out += bytes([w, len(windows[w])]) + bytes(windows[w])
+    return out
 
 
 def build_response(query: bytes, rcode: int = 0, answers=(), authority=(), aa: bool = True,
