@@ -31,6 +31,7 @@ def build_html(outdir: str) -> str:
     counts = summary.get("counts", {})
     findings = _load_jsonl(os.path.join(outdir, "findings.jsonl"))
     hyps = _load_jsonl(os.path.join(outdir, "hypotheses.jsonl"))
+    targets = _load_jsonl(os.path.join(outdir, "priority_targets.jsonl"))
     nodes = _load_jsonl(os.path.join(outdir, "graph_nodes.jsonl"))
     edges = _load_jsonl(os.path.join(outdir, "graph_edges.jsonl"))
     roots = ", ".join(summary.get("roots", []))
@@ -77,6 +78,15 @@ def build_html(outdir: str) -> str:
             f'<td>{esc(f["confidence"])}</td><td>{esc(f["type"])}</td><td class="tgt">{esc(f["target"])}</td>'
             f'<td>{esc(f["title"])}</td></tr>')
 
+    tgt_rows = []
+    for t in targets[:200]:
+        reasons = esc(", ".join(t.get("reasons", [])))
+        bar = min(100, int(t.get("score", 0)))
+        tgt_rows.append(
+            f'<tr><td class="score"><span class="bar" style="width:{bar}%"></span>{t.get("score", 0)}</td>'
+            f'<td class="tgt">{esc(t.get("host"))}</td><td>{esc(t.get("cdn") or "-")}</td>'
+            f'<td>{esc(t.get("waf") or "-")}</td><td>{reasons}</td></tr>')
+
     return _TEMPLATE.format(
         roots=esc(roots) or "recon", sev_badges=sev_badges,
         hosts_total=counts.get("hosts_total", 0), hosts_live=counts.get("hosts_live", 0),
@@ -86,6 +96,7 @@ def build_html(outdir: str) -> str:
         graph_nodes=index.get("graph", {}).get("nodes", len(nodes)),
         graph_edges=index.get("graph", {}).get("edges", len(edges)),
         hyp_rows="".join(hyp_rows) or "<p>No attack hypotheses generated.</p>",
+        tgt_rows="".join(tgt_rows) or "<tr><td colspan=5>No targets.</td></tr>",
         find_rows="".join(find_rows) or "<tr><td colspan=5>No findings.</td></tr>",
         gdata=gdata)
 
@@ -125,6 +136,7 @@ pre.ev{{background:#010409;padding:8px;border-radius:6px;overflow:auto;font-size
 table{{width:100%;border-collapse:collapse;font-size:12px}} th,td{{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}}
 th{{color:var(--mut);position:sticky;top:0;background:var(--panel)}} td.tgt{{color:var(--acc);word-break:break-all;max-width:280px}}
 .dot{{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}}
+.score{{position:relative;font-weight:600;min-width:60px}} .bar{{position:absolute;left:0;top:0;bottom:0;background:rgba(88,166,255,.25);z-index:-1}}
 #g{{width:100%;height:68vh;background:#010409;border:1px solid var(--line);border-radius:8px}}
 .leg{{display:flex;gap:10px;flex-wrap:wrap;padding:8px 0;font-size:11px;color:var(--mut)}}
 .leg span{{display:inline-flex;align-items:center;gap:4px}} .leg i{{width:10px;height:10px;border-radius:2px;display:inline-block}}
@@ -146,8 +158,11 @@ border-radius:6px;padding:4px 10px;cursor:pointer;margin-right:4px}} .filter but
 <div class="stat"><b>{graph_edges}</b><span>edges</span></div>
 </div>
 <nav><button class="on" data-t="hyp">Attack hypotheses</button>
-<button data-t="find">Findings</button><button data-t="graph">Graph</button></nav>
+<button data-t="targets">Targets</button><button data-t="find">Findings</button><button data-t="graph">Graph</button></nav>
 <section class="on" id="hyp">{hyp_rows}</section>
+<section id="targets">
+<table><thead><tr><th>score</th><th>host</th><th>cdn</th><th>waf</th><th>why</th></tr></thead>
+<tbody>{tgt_rows}</tbody></table></section>
 <section id="find">
 <div class="filter" id="sevf">
 <button class="on" data-s="all">all</button><button data-s="critical">critical</button>
