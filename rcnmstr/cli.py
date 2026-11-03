@@ -90,6 +90,7 @@ def build_parser():
                    help="auto-add related domains discovered via shared TLS certs to the active scope")
     p.add_argument("--nuclei", action="store_true",
                    help="run nuclei against live URLs if the binary is on PATH (deep mode)")
+    p.add_argument("--favicon-db", help="custom favicon-hash -> product JSON db")
     p.add_argument("--no-tools", action="store_true", help="do not call external binaries (subfinder/amass)")
     p.add_argument("--user-agent")
     p.add_argument("-s", "--scope", help="scope file (one host/pattern per line, ! prefix excludes)")
@@ -175,6 +176,10 @@ def main(argv=None):
         build_parser().error("at least one domain is required (or use --list-modules/--update-fingerprints)")
 
     keys = _load_keys(args.keys)
+    if getattr(args, "favicon_db", None):
+        from .modules.probe import favicon_db as _fdb
+        import rcnmstr.modules.probe as _pm
+        _pm._FAVDB = _fdb(args.favicon_db)
     resolvers = None
     if args.resolvers:
         resolvers = [l.strip() for l in open(args.resolvers)] if os.path.exists(args.resolvers) else _csv(args.resolvers)

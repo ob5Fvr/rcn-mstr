@@ -188,3 +188,12 @@ def test_hyp_ranking_order():
 
 def test_hyp_empty_context():
     assert _hyps(FakeCtx()) == []
+
+
+def test_hyp_sensitive_product():
+    c = FakeCtx()
+    c.add_finding("tp1", type="tech_identified", severity="info", confidence="medium",
+                  target="https://ci.example.com", title="Product identified by favicon hash: Jenkins",
+                  evidence={"product": "Jenkins"})
+    hyps = _hyps(c)
+    assert any(h["category"] == "sensitive_product" and "Jenkins" in h["title"] for h in hyps)

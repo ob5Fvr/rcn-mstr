@@ -13,6 +13,26 @@ from ..http import fetch
 from ..scope import clean_host
 from ..util import favicon_hash, html_title, is_public_ip, sha1, simhash
 
+import json as _json
+import os as _os
+
+_FAVDB = None
+
+
+def favicon_db(path=None):
+    global _FAVDB
+    if _FAVDB is None or path:
+        p = path or _os.path.join(_os.path.dirname(__file__), "..", "data", "favicons.json")
+        try:
+            raw = _json.load(open(p, encoding="utf-8"))
+            db = {str(k): v for k, v in raw.items() if not k.startswith("_")}
+        except Exception:  # noqa
+            db = {}
+        if path:
+            return db
+        _FAVDB = db
+    return _FAVDB
+
 SECURITY_HEADERS = ["strict-transport-security", "content-security-policy", "x-frame-options",
                     "x-content-type-options", "referrer-policy", "permissions-policy",
                     "cross-origin-opener-policy", "cross-origin-resource-policy", "cross-origin-embedder-policy"]
@@ -224,8 +244,18 @@ class HTTPProbe(Module):
     async def _favicon(self, ctx, base, svc):
         r = await fetch(ctx.probe, base + "/favicon.ico", timeout=ctx.cfg.timeout, max_bytes=200000)
         if r and r.status == 200 and r.body and "image" in r.header("content-type", "image"):
-            svc["favicon_mmh3"] = favicon_hash(r.body)
+            fh = favicon_hash(r.body)
+            svc["favicon_mmh3"] = fh
             svc["favicon_sha1"] = sha1(r.body)
+            product = favicon_db().get(str(fh))
+            if product:
+                svc["favicon_product"] = product
+                if not any(t["name"] == product for t in svc.get("tech", [])):
+                    svc.setdefault("tech", []).append({"name": product, "category": "favicon-id", "via": "favicon"})
+                ctx.finding("tech_identified", "info", "medium", base,
+                            f"Product identified by favicon hash: {product}",
+                            {"product": product, "favicon_mmh3": fh}, self.name, ["favicon", "fingerprint"],
+                            dedupe_key=f"fav:{product}")
 
     async def _cors(self, ctx, base, svc):
         probe_origin = "https://evil-rcn-poc.com"

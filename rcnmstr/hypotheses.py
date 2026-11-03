@@ -217,6 +217,25 @@ def generate(ctx, g: G.Graph, clusters: dict) -> List[dict]:
             "Historic URLs expose parameters classed as " + ", ".join(sorted(dangerous)) +
             ". Replay the live ones and fuzz each parameter class with the appropriate payloads."))
 
+    # 11. SENSITIVE PRODUCT IDENTIFIED (by favicon/tech) -> default-cred / unauth check
+    SENSITIVE = {"jenkins", "gitlab", "grafana", "kibana", "phpmyadmin", "rabbitmq", "harbor", "rancher",
+                 "kubernetes dashboard", "sonarqube", "nexus", "jupyter", "keycloak", "zabbix", "gitea",
+                 "argocd", "consul", "vault", "spring boot actuator"}
+    for f in by_type.get("tech_identified", []) + [x for x in findings if x["type"] == "admin_panel"]:
+        prod = (f.get("evidence") or {}).get("product", "") or f.get("title", "")
+        low = prod.lower()
+        if any(s in low for s in SENSITIVE):
+            H.append(Hypothesis.make(
+                "sensitive_product", f"Sensitive product exposed: {prod} at {f['target']}", "medium", 0.5,
+                f"{prod} was identified at {f['target']}. These admin/CI/observability products are frequent "
+                f"sources of unauthenticated access, default credentials and known RCE chains.",
+                [f["target"]], {"finding": f["id"], "product": prod},
+                ["Check for unauthenticated access to privileged functions",
+                 "Test default/weak credentials where applicable",
+                 "Map the exact version to known CVEs"],
+                f"{prod} is reachable at {f['target']}. Determine the version, test for unauthenticated access "
+                f"and default credentials, and check it against known CVEs for that product."))
+
     # dedupe by id (same category+targets), keeping the highest-confidence instance and merging evidence
     best: Dict[str, Hypothesis] = {}
     for h in H:
