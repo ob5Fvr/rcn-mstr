@@ -63,6 +63,8 @@ def build_parser():
     p.add_argument("-x", "--exclude", help="exclude file")
     p.add_argument("-k", "--keys", help="API keys file (KEY=value or json)")
     p.add_argument("--update-fingerprints", action="store_true", help="refresh takeover fingerprints and exit")
+    p.add_argument("--self-test", action="store_true",
+                   help="run the full pipeline against an in-process mock internet (no egress needed)")
     p.add_argument("-v", "--verbose", action="count", default=0)
     p.add_argument("-q", "--quiet", action="store_true")
     p.add_argument("--version", action="version", version=f"rcn-mstr {__version__}")
@@ -99,6 +101,9 @@ def main(argv=None):
     if args.update_fingerprints:
         asyncio.run(_update_fp())
         return 0
+    if args.self_test:
+        from .selftest import run_self_test
+        return asyncio.run(run_self_test(args.output or "rcn-selftest-out"))
     if not args.domains:
         build_parser().error("at least one domain is required (or use --list-modules/--update-fingerprints)")
 
@@ -138,11 +143,19 @@ def main(argv=None):
         scope_file=args.scope,
         exclude_file=args.exclude,
     )
+    from .dns.resolver import ResolverUnavailable
     try:
         ctx = asyncio.run(run(cfg))
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130
+    except ResolverUnavailable as e:
+        print("\n[FATAL] DNS is unusable in this environment - aborting instead of emitting garbage.\n",
+              file=sys.stderr)
+        print(str(e), file=sys.stderr)
+        print("\nFixes: pass working resolvers with -r, or --force-doh with reachable DoH, "
+              "or run where UDP/53 egress is allowed.", file=sys.stderr)
+        return 3
     except SystemExit as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

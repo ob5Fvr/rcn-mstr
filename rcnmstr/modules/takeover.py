@@ -95,6 +95,14 @@ class Takeover(Module):
             self.done.add("ns:" + z)
         await gather_limited([self._ns_check(ctx, z) for z in dict.fromkeys(deleg)], 20)
 
+    def _is_cloud_suffix(self, target: str) -> bool:
+        pats = set()
+        for lst in self.extra["dns_nxdomain_services"].values():
+            pats.update(lst)
+        for lst in self.extra["service_cnames"].values():
+            pats.update(lst)
+        return any(p in target for p in pats)
+
     async def _domain_unregistered(self, ctx, domain: str) -> Optional[bool]:
         reg = registrable(domain)
         if reg in self.reg_cache:
@@ -121,14 +129,9 @@ class Takeover(Module):
                        if any(p in c for p in pats for c in chain)]
         ev = {"cname_chain": chain, "rcode": info["rcode"], "target_rcode": info.get("cname_target_rcode")}
         if info.get("cname_target_rcode") == "NXDOMAIN":
-            unreg = await self._domain_unregistered(ctx, target)
-            if unreg and not ctx.scope.in_scope(target):
-                ctx.finding("subdomain_takeover", "high", "high", host,
-                            f"CNAME points to unregistered domain {registrable(target)}",
-                            {**ev, "unregistered_domain": registrable(target)}, self.name, ["takeover", "dns"],
-                            next_steps=[f"Check availability of {registrable(target)} at a registrar and register it"])
-                return
             nx_fps = [s for s in services if s.get("nxdomain")]
+            # Known cloud/SaaS service whose resource name is gone -> claim the resource (takes priority
+            # over the registrar path, because e.g. s3.amazonaws.com itself stays registered).
             if nx_fps or nx_services:
                 svc = (nx_fps[0]["service"] if nx_fps else nx_services[0])
                 vuln = (nx_fps[0].get("vulnerable") if nx_fps else True)
@@ -136,7 +139,23 @@ class Takeover(Module):
                             f"Dangling CNAME to {svc} resource ({target} is NXDOMAIN)",
                             {**ev, "service": svc, "known_vulnerable": vuln}, self.name, ["takeover", "dns", "cloud"],
                             references=[nx_fps[0].get("discussion", "")] if nx_fps else [],
-                            next_steps=[f"Try to claim '{target}' in {svc}"])
+                            next_steps=[f"Try to claim the resource '{target}' in {svc}"])
+                return
+            # Otherwise, if the registrable base domain itself is unregistered, it is a classic
+            # register-the-domain takeover.
+            if self._is_cloud_suffix(target):
+                ctx.finding("dangling_dns", "medium" if not ctx.scope.in_scope(target) else "low", "low", host,
+                            f"CNAME target {target} (cloud service) is NXDOMAIN - possible claimable resource",
+                            ev, self.name, ["dns", "dangling", "cloud"],
+                            next_steps=[f"Identify the provider for {target} and try to claim the resource"])
+                return
+            unreg = await self._domain_unregistered(ctx, target)
+            if unreg and not ctx.scope.in_scope(target):
+                reg = registrable(target)
+                ctx.finding("subdomain_takeover", "high", "high", host,
+                            f"CNAME points to unregistered domain {reg}",
+                            {**ev, "unregistered_domain": reg}, self.name, ["takeover", "dns"],
+                            next_steps=[f"Check availability of {reg} at a registrar and register it"])
             else:
                 ctx.finding("dangling_dns", "medium" if not ctx.scope.in_scope(target) else "low", "medium", host,
                             f"CNAME target {target} does not resolve (NXDOMAIN)", ev, self.name, ["dns", "dangling"],

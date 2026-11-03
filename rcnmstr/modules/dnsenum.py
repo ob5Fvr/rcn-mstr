@@ -366,40 +366,13 @@ class Bruteforce(Module):
         await resolve_candidates(ctx, cands, "brute", self.log)
 
 
-ENV_WORDS = ["dev", "stg", "stage", "staging", "qa", "uat", "test", "prod", "preprod", "internal", "api", "admin",
-             "vpn", "beta", "demo", "old", "new", "v1", "v2", "int", "sandbox", "backup", "corp", "app", "portal",
-             "mgmt", "secure", "edge", "origin", "legacy"]
+from ..permute import ENV_WORDS, generate as gen_permutations, permute_host
 
 
-def permutations(host: str, root: str, words=ENV_WORDS) -> Set[str]:
-    """dnsgen/altdns-style permutations of the label(s) left of the root domain."""
-    if host == root or not host.endswith("." + root):
-        return set()
-    sub = host[: -len(root) - 1]
-    labels = sub.split(".")
-    first, rest = labels[0], ".".join(labels[1:])
-    tail = (rest + "." if rest else "") + root
-    out = set()
-    for w in words:
-        if w == first:
-            continue
-        out.update({f"{w}-{first}.{tail}", f"{first}-{w}.{tail}", f"{w}.{first}.{tail}", f"{w}{first}.{tail}",
-                    f"{first}{w}.{tail}", f"{first}.{w}.{tail}"})
-        # word swap within dash-separated tokens: api-dev -> api-stg
-        toks = first.split("-")
-        for i, t in enumerate(toks):
-            if t in words and t != w:
-                nt = toks[:]
-                nt[i] = w
-                out.add("-".join(nt) + "." + tail)
-    # number increment / decrement: app1 -> app2, app0
-    for m in re.finditer(r"\d+", first):
-        n = int(m.group())
-        for d in (-1, 1, 2):
-            if n + d >= 0:
-                out.add(first[:m.start()] + str(n + d).zfill(len(m.group())) + first[m.end():] + "." + tail)
-    out.discard(host)
-    return {o for o in out if clean_host(o)}
+def permutations(host: str, root: str, words=None) -> Set[str]:
+    """Permutations of the label(s) left of the root domain (thin wrapper over rcnmstr.permute)."""
+    from ..permute import base_words
+    return permute_host(host, root, list(words) if words else base_words())
 
 
 class Permutations(Module):
@@ -407,24 +380,20 @@ class Permutations(Module):
     phase = 26
     mode = "normal"
     loop = True
-    description = "altdns/dnsgen-style permutations of live hosts"
+    description = "Corpus-aware altdns/dnsgen-style permutations of live hosts"
 
     async def run(self, ctx):
         budget = ctx.cfg.max_permutations - ctx.stats.get("permutations_tried", 0)
         if budget <= 0:
             return
-        cands: Set[str] = set()
-        for h in sorted(ctx.live_hosts(), key=len):
-            if h in self.done:
-                continue
+        fresh = [h for h in ctx.live_hosts() if h not in self.done]
+        for h in fresh:
             self.done.add(h)
-            root = ctx.scope.root_of(h)
-            if not root:
-                continue
-            cands |= permutations(h, root)
-            if len(cands) >= budget:
-                break
-        cands = set(list(cands - set(ctx.hosts))[:budget])
+        if not fresh:
+            return
+        # generate from ALL live hosts (so the corpus is complete) but only when new hosts appeared
+        cands = gen_permutations(ctx.live_hosts(), ctx.scope.roots, cap=budget, use_corpus=True)
+        cands = [c for c in cands if c not in ctx.hosts]
         ctx.stats["permutations_tried"] = ctx.stats.get("permutations_tried", 0) + len(cands)
         if cands:
-            await resolve_candidates(ctx, sorted(cands), "permutation", self.log)
+            await resolve_candidates(ctx, cands, "permutation", self.log)
