@@ -160,7 +160,7 @@ async def _http_server(tls, host):
     return srv, srv.sockets[0].getsockname()[1]
 
 
-async def run_self_test(outdir: str) -> int:
+async def run_self_test(outdir: str, modules=None, mode: str = "normal") -> int:
     from .context import Config
     from .engine import run
 
@@ -192,12 +192,13 @@ async def run_self_test(outdir: str) -> int:
     sf.write("example.com\nshop.example.com\n")
     sf.flush()
 
+    default_mods = ["resolve", "dnsrecords", "brute", "permute", "takeover", "probe", "waf", "content", "js",
+                    "cloud", "analysis", "correlate"]
     cfg = Config(
-        domains=["example.com"], output=outdir, mode="normal",
-        modules=["resolve", "dnsrecords", "brute", "permute", "takeover", "probe", "waf", "content", "js", "cloud",
-                 "analysis", "correlate"],
-        resolvers=[f"127.0.0.1:{dns_port}"], brute=True, tools=False, max_rounds=3, timeout=3.0,
-        http_ports=[http_port], recheck_archive=False, scope_file=sf.name,
+        domains=["example.com"], output=outdir, mode=mode,
+        modules=modules if modules is not None else default_mods,
+        resolvers=[f"127.0.0.1:{dns_port}"], brute=True, tools=False, nuclei=False, max_rounds=3, timeout=3.0,
+        http_ports=[http_port], recheck_archive=False, scope_file=sf.name, allow_private=True,
     )
     print(f"[self-test] mock DNS :{dns_port}  mock HTTP :{http_port}  -> {outdir}", file=sys.stderr)
     try:
