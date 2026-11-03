@@ -80,6 +80,9 @@ class Context:
         self.params: Set[str] = set()
         self.emails: Set[str] = set()
         self.stats: Dict[str, Any] = {}
+        self.graph = None
+        self.clusters: Dict[str, list] = {}
+        self.hypotheses: List[dict] = []
         self.module_status: Dict[str, dict] = {}
         self.out_counts: Dict[str, int] = {}
         self._files: Dict[str, Any] = {}

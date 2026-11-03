@@ -74,10 +74,22 @@ def write_outputs(ctx):
 
     # top-level index for the downstream AI harness
     index = {
-        "schema": "rcn-mstr/1.0",
+        "schema": "rcn-mstr/1.1",
         "summary": ctx.stats.get("summary", {}),
+        "graph": ctx.stats.get("graph", {}),
+        "hypotheses_count": len(ctx.hypotheses),
+        "top_hypotheses": [
+            {"id": h["id"], "category": h["category"], "severity": h["severity"],
+             "confidence": h["confidence"], "title": h["title"], "targets": h["targets"]}
+            for h in ctx.hypotheses[:15]
+        ],
         "files": {
+            "hypotheses": "hypotheses.jsonl",
             "findings": "findings.jsonl",
+            "graph_nodes": "graph_nodes.jsonl",
+            "graph_edges": "graph_edges.jsonl",
+            "graph_dot": "graph.dot",
+            "clusters": "clusters.json",
             "hosts": "hosts.jsonl",
             "hosts_live": "hosts_live.txt",
             "ips": "ips.jsonl",
@@ -89,6 +101,9 @@ def write_outputs(ctx):
             "run": "run.json",
             "events_dir": ".",
         },
+        "ingestion_hint": ("Start with hypotheses.jsonl (ranked attack chains, each with an agent_prompt). "
+                           "Pivot through graph_nodes.jsonl/graph_edges.jsonl (typed knowledge graph). "
+                           "findings.jsonl has the raw evidence; *.jsonl are per-phase event streams."),
         "event_streams": sorted(k for k in ctx.out_counts),
     }
     ctx.write_json("index.json", index)
@@ -108,8 +123,15 @@ def _write_readme(ctx):
         f"- ips: {c.get('ips', 0)}   services: {c.get('services', 0)}   findings: {c.get('findings', 0)}",
         f"- findings by severity: " + ", ".join(f"{k}={v}" for k, v in sev.items()) if sev else "- no findings",
         "",
+        f"- attack hypotheses: {len(ctx.hypotheses)}   graph: {ctx.stats.get('graph', {}).get('nodes', 0)} nodes / "
+        f"{ctx.stats.get('graph', {}).get('edges', 0)} edges",
+        "",
         "## Files",
         "- `index.json` - machine entrypoint (summary + file map). Start here for AI ingestion.",
+        "- `hypotheses.jsonl` - **ranked attack chains**, each with rationale, evidence node ids, concrete",
+        "  steps and a self-contained `agent_prompt` for an autonomous follow-up agent. Start here.",
+        "- `graph_nodes.jsonl` / `graph_edges.jsonl` / `graph.dot` - typed correlation knowledge graph.",
+        "- `clusters.json` - cert/favicon/body/co-host/ASN clusters (shared-infra structure).",
         "- `findings.jsonl` - ranked findings (id,type,severity,confidence,target,title,evidence,next_steps).",
         "- `hosts.jsonl` / `hosts_live.txt` - every host with DNS + HTTP context.",
         "- `services.jsonl` - HTTP services (status,title,tech,tls,headers,favicon,cors).",

@@ -194,8 +194,8 @@ async def run_self_test(outdir: str) -> int:
 
     cfg = Config(
         domains=["example.com"], output=outdir, mode="normal",
-        modules=["resolve", "dnsrecords", "brute", "permute", "takeover", "probe", "content", "js", "cloud",
-                 "analysis"],
+        modules=["resolve", "dnsrecords", "brute", "permute", "takeover", "probe", "waf", "content", "js", "cloud",
+                 "analysis", "correlate"],
         resolvers=[f"127.0.0.1:{dns_port}"], brute=True, tools=False, max_rounds=3, timeout=3.0,
         http_ports=[http_port], recheck_archive=False, scope_file=sf.name,
     )
@@ -213,9 +213,13 @@ async def run_self_test(outdir: str) -> int:
     print(f"  hosts={c.get('hosts_total')} live={c.get('hosts_live')} services={c.get('services')} "
           f"findings={c.get('findings')}", file=sys.stderr)
     print(f"  finding types: {sorted(types)}", file=sys.stderr)
+    print(f"  graph: {ctx.stats.get('graph', {})}", file=sys.stderr)
+    print(f"  attack hypotheses: {len(ctx.hypotheses)}", file=sys.stderr)
+    for h in ctx.hypotheses[:8]:
+        print(f"    [{h['severity']:8}] c={h['confidence']} {h['category']}: {h['title']}", file=sys.stderr)
     expected = {"content_exposure", "secret", "cors_misconfig"}
     missing = expected - types
-    ok = not missing and c.get("hosts_live", 0) >= 4
+    ok = not missing and c.get("hosts_live", 0) >= 4 and len(ctx.hypotheses) >= 1
     print(f"  self-test {'PASSED' if ok else 'INCOMPLETE (missing: %s)' % missing}", file=sys.stderr)
     print(f"  output -> {outdir}/index.json", file=sys.stderr)
     return 0 if ok else 1
