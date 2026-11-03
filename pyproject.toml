@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcn-mstr"
+version = "1.0.0"
+description = "Modular asynchronous recon framework producing raw, AI-ingestible bug-bounty recon data"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = ["aiohttp>=3.8"]
+
+[project.optional-dependencies]
+tls = ["cryptography>=3.4"]
+dev = ["pytest>=7", "pytest-asyncio>=0.21", "cryptography>=3.4"]
+
+[project.scripts]
+rcn-mstr = "rcnmstr.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rcnmstr*"]
+
+[tool.setuptools.package-data]
+rcnmstr = ["data/*.json", "data/*.txt"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
