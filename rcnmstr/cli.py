@@ -60,6 +60,7 @@ def _load_keys(path):
 def build_parser():
     p = argparse.ArgumentParser(prog="rcn-mstr", description="Modular async recon framework (AI-ingestible output)")
     p.add_argument("domains", nargs="*", help="root domain(s), e.g. example.com")
+    p.add_argument("-f", "--targets-file", help="file with one root domain per line (bulk recon)")
     p.add_argument("-o", "--output", help="output directory (default rcn-out/<domain>-<ts>)")
     p.add_argument("-m", "--mode", choices=["passive", "normal", "deep"], default="normal",
                    help="passive=no active probing; normal=probe+content+js; deep=+portscan+origin+wide")
@@ -193,7 +194,12 @@ def main(argv=None):
         else:
             print(summarize(d))
         return 0 if not d["has_changes"] else 10  # exit 10 => changes detected (useful for cron/CI)
-    if not args.domains:
+    if getattr(args, "targets_file", None) and os.path.exists(args.targets_file):
+        for line in open(args.targets_file, encoding="utf-8", errors="ignore"):
+            line = line.strip()
+            if line and not line.startswith("#") and line not in args.domains:
+                args.domains.append(line)
+    if not args.domains and not (args.self_test or args.diff or args.html or args.query or args.agent_plan or args.serve or args.list_modules or args.update_fingerprints):
         build_parser().error("at least one domain is required (or use --list-modules/--update-fingerprints)")
 
     keys = _load_keys(args.keys)

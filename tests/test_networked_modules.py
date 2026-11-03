@@ -253,3 +253,12 @@ def test_cli_explicit_overrides_config(tmp_path):
     p = build_parser()
     args = p.parse_args(["x.com", "--config", str(conf), "--mode", "passive"])
     assert args.mode == "passive"  # explicit flag wins (verified in main())
+
+
+def test_cli_targets_file(tmp_path, capsys):
+    from rcnmstr.cli import main
+    f = tmp_path / "roots.txt"
+    f.write_text("a.example\n# skip\nb.example\n")
+    # --list-modules short-circuits before a run; use it just to confirm parsing doesn't error with -f
+    rc = main(["-f", str(f), "--list-modules"])
+    assert rc == 0
