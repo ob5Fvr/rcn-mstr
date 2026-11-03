@@ -30,10 +30,15 @@ class OriginIP(Module):
             await self._check_host(ctx, host, candidates)
 
     def _candidates(self, ctx) -> List[str]:
+        from ..util import is_private_ip
         cands: Set[str] = set()
+        allow_priv = getattr(ctx.cfg, "allow_private", False)
+
+        def usable(ip):
+            return is_public_ip(ip) or (allow_priv and (is_private_ip(ip) or ip.startswith("127.")))
         # non-CDN IPs of any sibling host
         for ip, rec in ctx.ips.items():
-            if is_public_ip(ip) and not rec.get("cdn"):
+            if usable(ip) and not rec.get("cdn"):
                 cands.add(ip)
         # SPF ip4 ranges (small ones expanded)
         for ips in ctx.stats.get("spf_ips", {}).values():
@@ -58,12 +63,27 @@ class OriginIP(Module):
         rec = ctx.ips.get(ip)
         return bool((rec and rec.get("cdn")) or cdn_for_ip(ip))
 
+    def _service_bases(self, ctx, host):
+        """(scheme, port) pairs actually observed for this host, best (https) first; fall back to 443/80."""
+        bases = []
+        for svc in ctx.services.values():
+            if svc.get("host") == host and svc.get("status"):
+                bases.append((svc["scheme"], svc["port"]))
+        if not bases:
+            bases = [("https", 443), ("http", 80)]
+        return sorted(set(bases), key=lambda sp: sp[0] != "https")
+
+    def _url(self, scheme, hostip, port):
+        if (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
+            return f"{scheme}://{hostip}/"
+        return f"{scheme}://{hostip}:{port}/"
+
     async def _baseline(self, ctx, host) -> Optional[dict]:
-        for scheme in ("https", "http"):
-            r = await fetch(ctx.probe, f"{scheme}://{host}/", timeout=ctx.cfg.timeout, max_bytes=500000,
-                            allow_redirects=False)
+        for scheme, port in self._service_bases(ctx, host):
+            r = await fetch(ctx.probe, self._url(scheme, host, port), timeout=ctx.cfg.timeout,
+                            max_bytes=500000, allow_redirects=False)
             if r:
-                return {"scheme": scheme, "status": r.status, "simhash": simhash(r.text),
+                return {"scheme": scheme, "port": port, "status": r.status, "simhash": simhash(r.text),
                         "title": html_title(r.text), "len": len(r.body)}
         return None
 
@@ -86,8 +106,8 @@ class OriginIP(Module):
 
     async def _try(self, ctx, host, ip, base) -> Optional[dict]:
         scheme = base["scheme"]
-        port = 443 if scheme == "https" else 80
-        url = f"{scheme}://{ip}:{port}/" if port not in (80, 443) else f"{scheme}://{ip}/"
+        port = base.get("port", 443 if scheme == "https" else 80)
+        url = self._url(scheme, ip, port)
         r = await fetch(ctx.probe, url, headers={"Host": host}, server_hostname=host if scheme == "https" else None,
                         timeout=ctx.cfg.timeout, max_bytes=500000, allow_redirects=False)
         if not r:
