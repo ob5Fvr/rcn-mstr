@@ -59,6 +59,27 @@ _RULES = [
     ("mysql_uri", r"\bmysql://[^\s\"'<>:@]+:[^\s\"'<>@]+@[^\s\"'<>]+", False, 0),
     ("redis_uri", r"\bredis://[^\s\"'<>@]*:[^\s\"'<>@]+@[^\s\"'<>]+", False, 0),
     ("amqp_uri", r"\bamqps?://[^\s\"'<>:@]+:[^\s\"'<>@]+@[^\s\"'<>]+", False, 0),
+    # LLM / AI providers
+    ("openai_key", r"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}T3BlbkFJ[A-Za-z0-9_-]{20,}\b", False, 0),
+    ("anthropic_key", r"\bsk-ant-(?:api03|admin01)-[A-Za-z0-9_-]{80,120}\b", False, 0),
+    ("huggingface_token", r"\bhf_[A-Za-z0-9]{34}\b", False, 0),
+    ("cohere_key", r"(?i)cohere[_.\- ]?(?:api[_.\- ]?)?key[\"'`:=\s]{1,6}([A-Za-z0-9]{40})", True, 3.5),
+    ("replicate_token", r"\br8_[A-Za-z0-9]{37}\b", False, 0),
+    # dev / ci / saas
+    ("gitlab_runner", r"\bGR1348941[A-Za-z0-9_-]{20}\b", False, 0),
+    ("terraform_cloud", r"\b[A-Za-z0-9]{14}\.atlasv1\.[A-Za-z0-9_-]{60,70}\b", False, 0),
+    ("circleci_token", r"(?i)circle[_.\- ]?ci[_.\- ]?token[\"'`:=\s]{1,6}([a-f0-9]{40})", False, 0),
+    ("notion_token", r"\b(?:secret_|ntn_)[A-Za-z0-9]{36,46}\b", False, 0),
+    ("airtable_key", r"\b(?:key[A-Za-z0-9]{14}|pat[A-Za-z0-9]{14}\.[A-Za-z0-9]{64})\b", False, 0),
+    ("discord_bot_token", r"\b[MNO][A-Za-z\d_-]{23,26}\.[A-Za-z\d_-]{6}\.[A-Za-z\d_-]{27,38}\b", False, 0),
+    ("discord_webhook", r"https://(?:ptb\.|canary\.)?discord(?:app)?\.com/api/webhooks/\d{17,20}/[A-Za-z0-9_-]{60,}", False, 0),
+    ("telegram_bot_token", r"\b\d{8,10}:[A-Za-z0-9_-]{35}\b", True, 3.0),
+    ("jenkins_crumb", r"(?i)jenkins[_.\- ]?crumb[\"'`:=\s]{1,6}([a-f0-9]{32,64})", False, 0),
+    ("okta_token", r"\b00[A-Za-z0-9_-]{40}\b", True, 4.0),
+    ("pagerduty_key", r"(?i)pagerduty[_.\- ]?(?:api[_.\- ]?)?key[\"'`:=\s]{1,6}([A-Za-z0-9_+-]{20})", True, 3.5),
+    ("dropbox_token", r"\bsl\.[A-Za-z0-9_-]{130,152}\b", False, 0),
+    ("asana_pat", r"\b[0-9]\/[0-9]{16}:[A-Za-z0-9]{32}\b", False, 0),
+    ("grafana_token", r"\b(?:glc_|glsa_)[A-Za-z0-9_]{32,}\b", False, 0),
 ]
 
 RULES = [(name, re.compile(pat), ent, minent) for name, pat, ent, minent in _RULES]

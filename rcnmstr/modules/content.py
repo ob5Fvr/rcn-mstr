@@ -111,6 +111,28 @@ PATHS: Dict[str, Tuple[str, Callable, list, str]] = {
     "db.sql": ("high", _re(r"CREATE TABLE", r"INSERT INTO"), ["backup"], "SQL dump downloadable"),
     "www.zip": ("high", lambda s, h, b: s == 200 and b[:2] == "PK", ["backup"], "Site archive downloadable"),
     "web.config": ("medium", _re(r"<configuration", r"<system.web"), ["config", "dotnet"], "web.config exposed"),
+    # cloud / dev credentials & state
+    ".aws/credentials": ("critical", _re(r"aws_access_key_id", r"\[default\]"), ["secret", "aws"], "AWS credentials file"),
+    ".npmrc": ("high", _re(r"_authToken=", r"//registry\.npmjs\.org/:"), ["secret", "npm"], ".npmrc with auth token"),
+    ".dockercfg": ("high", _re(r'"auth"\s*:', r'"https://index.docker.io'), ["secret", "docker"], "Docker registry creds"),
+    ".docker/config.json": ("high", _json_key('"auths"'), ["secret", "docker"], "Docker config with auths"),
+    ".terraform.tfstate": ("high", _json_key('"terraform_version"', '"resources"'), ["secret", "iac"], "Terraform state (may hold secrets)"),
+    "terraform.tfstate": ("high", _json_key('"terraform_version"', '"resources"'), ["secret", "iac"], "Terraform state (may hold secrets)"),
+    ".htpasswd": ("high", lambda s, h, b: s == 200 and re.search(r"^[\w.-]+:\$(?:apr1|2[aby]|1)\$", b, re.M), ["secret"], ".htpasswd hashes"),
+    "id_rsa": ("critical", _re(r"BEGIN (?:RSA |OPENSSH )?PRIVATE KEY"), ["secret", "ssh"], "SSH private key"),
+    ".ssh/id_rsa": ("critical", _re(r"BEGIN (?:RSA |OPENSSH )?PRIVATE KEY"), ["secret", "ssh"], "SSH private key"),
+    ".bash_history": ("medium", lambda s, h, b: s == 200 and "\n" in b and "<html" not in b[:80].lower(), ["info-leak"], "Shell history exposed"),
+    "composer.lock": ("low", _json_key('"packages"', '"content-hash"'), ["info-leak", "php"], "composer.lock exposed"),
+    "package-lock.json": ("info", _json_key('"lockfileVersion"', '"dependencies"'), ["info-leak", "npm"], "package-lock.json exposed"),
+    "WEB-INF/web.xml": ("high", _re(r"<web-app", r"<servlet"), ["config", "java"], "Java WEB-INF/web.xml exposed"),
+    "storage/logs/laravel.log": ("medium", _re(r"\[\d{4}-\d\d-\d\d.*\].*(ERROR|production)", r"stacktrace"), ["info-leak", "laravel"], "Laravel log exposed"),
+    "app/etc/local.xml": ("high", _re(r"<config", r"<key>|<username>|<password>"), ["secret", "magento"], "Magento local.xml (DB creds)"),
+    "config.php.bak": ("critical", _re(r"\$db|password|DB_", r"<\?php"), ["secret", "php"], "PHP config backup"),
+    ".vscode/sftp.json": ("high", _json_key('"password"', '"privateKeyPath"', '"host"'), ["secret"], "VSCode SFTP config"),
+    "phpunit.xml": ("low", _re(r"<phpunit", r"env name="), ["config", "php"], "phpunit.xml (may hold env)"),
+    "wp-json/wp/v2/users": ("low", lambda s, h, b: s == 200 and '"slug"' in b and ('"id"' in b or '"name"' in b), ["wordpress", "user-enum"], "WordPress user enumeration via REST"),
+    ".well-known/mta-sts.txt": ("info", _re(r"version:\s*STSv1", r"mx:"), ["recon", "email"], "MTA-STS policy"),
+    "graphql.config.json": ("low", _json_key('"schema"', '"projects"'), ["api-docs"], "GraphQL config exposed"),
     # graphql handled separately (POST)
 }
 

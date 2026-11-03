@@ -215,3 +215,24 @@ def test_detect_tech_version_from_generator():
     t = probe.detect_tech(200, {}, [], '<meta name="generator" content="WordPress 6.4.2">/wp-content/')
     wp = [x for x in t if x["name"] == "WordPress"][0]
     assert wp.get("version") == "6.4.2"
+
+
+def test_new_secret_rules():
+    from rcnmstr.modules.jsanalysis import extract_secrets as E
+    cases = {
+        "huggingface_token": "hf_" + "aQ3x" * 8 + "ab",
+        "anthropic_key": "sk-ant-api03-" + "Xy7kQ" * 19,
+        "openai_key": "sk-proj-" + "Ab3xK9mZ" * 3 + "T3BlbkFJ" + "Qz7wLp2M" * 3,
+        "discord_webhook": "https://discord.com/api/webhooks/987654321098765432/" + "xY9kLm2Q" * 9,
+        "grafana_token": "glsa_" + "Xk7Q" * 10,
+    }
+    for rule, text in cases.items():
+        found = {s["rule"] for s in E(text, "t.js")}
+        assert rule in found, f"{rule} not detected: {found}"
+
+
+def test_content_path_signatures_valid():
+    from rcnmstr.modules.content import PATHS
+    assert len(PATHS) >= 80
+    for p, (sev, sig, tags, desc) in PATHS.items():
+        assert callable(sig) and sev in ("info", "low", "medium", "high", "critical")
