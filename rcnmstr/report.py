@@ -108,6 +108,11 @@ def write_outputs(ctx):
     }
     ctx.write_json("index.json", index)
     _write_readme(ctx)
+    try:
+        from .htmlreport import write_html
+        write_html(ctx.outdir)
+    except Exception as e:  # noqa
+        log.debug("html report failed: %s", e)
 
 
 def _write_readme(ctx):

@@ -187,3 +187,42 @@ async def test_self_test_runs(tmp_path):
     assert rc == 0
     idx = json.load(open(os.path.join(str(tmp_path / "selftest"), "index.json")))
     assert idx["summary"]["counts"]["findings"] > 10
+
+
+@pytest.mark.asyncio
+async def test_html_report_generated(tmp_path):
+    from rcnmstr.selftest import run_self_test
+    out = str(tmp_path / "st")
+    rc = await run_self_test(out)
+    assert rc == 0
+    import os
+    html_path = os.path.join(out, "report.html")
+    assert os.path.exists(html_path)
+    h = open(html_path).read()
+    assert "<svg id=\"g\"" in h and "Attack hypotheses" in h
+    # valid-ish html: balanced-enough + has the data blob
+    assert "var G=" in h and h.strip().endswith("</html>")
+
+
+def test_html_report_from_fixture(tmp_path):
+    # build a minimal run dir and render without running the engine
+    import json
+    from rcnmstr.htmlreport import build_html
+    d = str(tmp_path / "run")
+    os.makedirs(d)
+    json.dump({"schema": "rcn-mstr/1.1", "summary": {"roots": ["example.com"],
+              "counts": {"hosts_total": 3, "hosts_live": 2, "ips": 1, "services": 2, "findings": 1},
+              "findings_by_severity": {"high": 1}}, "graph": {"nodes": 2, "edges": 1}},
+              open(os.path.join(d, "index.json"), "w"))
+    open(os.path.join(d, "findings.jsonl"), "w").write(json.dumps(
+        {"id": "f1", "type": "secret", "severity": "high", "confidence": "high",
+         "target": "https://x.example.com/a.js", "title": "AWS key"}) + "\n")
+    open(os.path.join(d, "hypotheses.jsonl"), "w").write(json.dumps(
+        {"id": "h1", "category": "secret_pivot", "severity": "high", "confidence": 0.6,
+         "title": "Secret pivot", "rationale": "r", "targets": ["x.example.com"], "steps": ["s1"],
+         "agent_prompt": "do x", "evidence": {}}) + "\n")
+    open(os.path.join(d, "graph_nodes.jsonl"), "w").write(
+        json.dumps({"id": "host:x.example.com", "type": "host", "label": "x.example.com"}) + "\n")
+    open(os.path.join(d, "graph_edges.jsonl"), "w").write("")
+    h = build_html(d)
+    assert "Secret pivot" in h and "AWS key" in h and "example.com" in h

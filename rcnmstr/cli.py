@@ -68,6 +68,8 @@ def build_parser():
     p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"),
                    help="compare two run output directories and print attack-surface drift")
     p.add_argument("--json", action="store_true", help="with --diff: emit JSON instead of a summary")
+    p.add_argument("--html", metavar="RUN_DIR",
+                   help="(re)generate report.html from an existing run output directory and exit")
     p.add_argument("-v", "--verbose", action="count", default=0)
     p.add_argument("-q", "--quiet", action="store_true")
     p.add_argument("--version", action="version", version=f"rcn-mstr {__version__}")
@@ -107,6 +109,10 @@ def main(argv=None):
     if args.self_test:
         from .selftest import run_self_test
         return asyncio.run(run_self_test(args.output or "rcn-selftest-out"))
+    if args.html:
+        from .htmlreport import write_html
+        print(write_html(args.html))
+        return 0
     if args.diff:
         from .diff import diff_runs, summarize
         d = diff_runs(args.diff[0], args.diff[1])
