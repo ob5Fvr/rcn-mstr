@@ -272,3 +272,22 @@ async def test_http_methods_enumeration(fake_dns, fake_http, tmp_path):
     mf = [f for f in ctx.findings.values() if f["type"] == "http_methods"]
     assert any("TRACE" in f["title"] for f in mf)
     assert any("dangerous" in f["title"].lower() for f in mf)
+
+
+async def test_wildcard_signature_concurrent_safe(fake_dns, tmp_path):
+    """Concurrent callers get the same signature; no caller sees a half-built placeholder."""
+    import asyncio as _a
+    from rcnmstr.modules.dnsenum import wildcard_signature
+    from rcnmstr.context import Config, Context
+    from rcnmstr.scope import Scope
+    from rcnmstr.dns.resolver import Resolver
+    fake_dns.wildcards["example.com"] = ["9.9.9.9"]
+    r = Resolver([fake_dns.resolver_str], timeout=2.0, retries=2)
+    await r.start()
+    ctx = Context(Config(domains=["example.com"], output=str(tmp_path / "o")), Scope(["example.com"]),
+                  str(tmp_path / "o"))
+    ctx.resolver = r
+    sigs = await _a.gather(*(wildcard_signature(ctx, "example.com") for _ in range(20)))
+    assert all(s is not None and s["ips"] == {"9.9.9.9"} for s in sigs)
+    ctx.close()
+    await r.close()

@@ -18,22 +18,42 @@ DATA = os.path.join(os.path.dirname(__file__), "..", "data")
 
 
 async def wildcard_signature(ctx, zone: str) -> Optional[dict]:
-    """Return {'ips': set, 'cnames': set} if *.zone resolves, else None. Cached per zone."""
+    """Return {'ips': set, 'cnames': set} if *.zone resolves, else None. Cached per zone.
+
+    Concurrency-safe: the first caller computes the signature while others await the same future,
+    so a parallel caller never sees a half-built placeholder and wrongly skips wildcard filtering.
+    """
     if zone in ctx.wildcards:
         return ctx.wildcards[zone] or None
-    ctx.wildcards[zone] = {}  # placeholder to avoid concurrent duplicate work
-    res = await asyncio.gather(*(ctx.resolver.resolve_host(f"{random_label()}.{zone}") for _ in range(3)))
-    hits = [r for r in res if r["resolved"] or (r["cname"] and r["rcode"] == "NOERROR")]
-    if not hits:
-        ctx.wildcards[zone] = {}
-        return None
-    sig = {"ips": set(), "cnames": set(), "zone": zone}
-    for r in hits:
-        sig["ips"].update(r["a"] + r["aaaa"])
-        sig["cnames"].update(r["cname"])
-    ctx.wildcards[zone] = sig
-    ctx.emit("wildcards", {"zone": zone, "ips": sorted(sig["ips"]), "cnames": sorted(sig["cnames"])})
-    return sig
+    inflight = ctx.__dict__.setdefault("_wildcard_inflight", {})
+    fut = inflight.get(zone)
+    if fut is not None:
+        return await asyncio.shield(fut)
+    fut = asyncio.get_running_loop().create_future()
+    inflight[zone] = fut
+    try:
+        res = await asyncio.gather(*(ctx.resolver.resolve_host(f"{random_label()}.{zone}") for _ in range(3)))
+        hits = [r for r in res if r["resolved"] or (r["cname"] and r["rcode"] == "NOERROR")]
+        if not hits:
+            ctx.wildcards[zone] = {}
+            fut.set_result(None)
+            return None
+        sig = {"ips": set(), "cnames": set(), "zone": zone}
+        for r in hits:
+            sig["ips"].update(r["a"] + r["aaaa"])
+            sig["cnames"].update(r["cname"])
+        ctx.wildcards[zone] = sig
+        ctx.emit("wildcards", {"zone": zone, "ips": sorted(sig["ips"]), "cnames": sorted(sig["cnames"])})
+        fut.set_result(sig)
+        return sig
+    except BaseException as e:
+        if not fut.done():
+            fut.set_exception(e)
+            fut.exception()
+        ctx.wildcards.pop(zone, None)
+        raise
+    finally:
+        inflight.pop(zone, None)
 
 
 def matches_wildcard(info: dict, sig: Optional[dict]) -> bool:
