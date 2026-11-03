@@ -51,6 +51,8 @@ class Config:
     scope_file: Optional[str] = None
     exclude_file: Optional[str] = None
     allow_private: bool = False  # probe/scan RFC1918 IPs (useful for internal recon / tests)
+    expand_scope: bool = False   # auto-add related domains (from shared TLS certs) to scope
+    nuclei: bool = False         # run nuclei against live URLs if the binary is on PATH (deep)
     user_agent: Optional[str] = None
     tools: bool = True  # use external binaries (subfinder/amass) when on PATH
 

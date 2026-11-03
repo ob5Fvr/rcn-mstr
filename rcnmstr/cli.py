@@ -84,6 +84,10 @@ def build_parser():
     p.add_argument("--no-archive-recheck", action="store_true")
     p.add_argument("--max-buckets", type=int, default=600)
     p.add_argument("--allow-private", action="store_true", help="probe/scan RFC1918 IPs")
+    p.add_argument("--expand-scope", action="store_true",
+                   help="auto-add related domains discovered via shared TLS certs to the active scope")
+    p.add_argument("--nuclei", action="store_true",
+                   help="run nuclei against live URLs if the binary is on PATH (deep mode)")
     p.add_argument("--no-tools", action="store_true", help="do not call external binaries (subfinder/amass)")
     p.add_argument("--user-agent")
     p.add_argument("-s", "--scope", help="scope file (one host/pattern per line, ! prefix excludes)")
@@ -199,6 +203,8 @@ def main(argv=None):
         recheck_archive=not args.no_archive_recheck,
         max_buckets=args.max_buckets,
         allow_private=args.allow_private,
+        expand_scope=args.expand_scope,
+        nuclei=args.nuclei,
         tools=not args.no_tools,
         user_agent=args.user_agent,
         scope_file=args.scope,
