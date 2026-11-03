@@ -38,7 +38,8 @@ def candidate_names(keywords: List[str]) -> List[str]:
 
 def parse_ref(ref: str) -> Optional[Tuple[str, str]]:
     """Return (provider, bucket) from a reference string found in JS/HTML/CNAME."""
-    ref = ref.lower().lstrip("https://").lstrip("http://")
+    ref = ref.lower()
+    ref = re.sub(r"^https?://", "", ref)
     m = re.match(r"([a-z0-9.\-_]+)\.s3[.\-]", ref) or re.match(r"s3[.\-][a-z0-9.\-]*/([a-z0-9.\-_]+)", ref)
     if m:
         return ("s3", m.group(1))

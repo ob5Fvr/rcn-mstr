@@ -9,6 +9,7 @@ import re
 from typing import Dict, List, Optional
 
 from ..base import Module, gather_limited
+from ..data.cdn_ranges import cdn_for_ip
 from ..http import api_get
 from ..util import is_public_ip
 
@@ -134,6 +135,11 @@ class NetIntel(Module):
         if cymru:
             rec.update(cymru)
             rec["cdn"] = classify_cdn_asn(cymru.get("as_name"))
+        # CIDR-range classification is authoritative even when Cymru is unavailable/misnamed
+        range_cdn = cdn_for_ip(ip)
+        if range_cdn:
+            rec["cdn"] = rec.get("cdn") or range_cdn
+            rec["cdn_range"] = range_cdn
         rec["ptr"] = ptr
         for name in ptr:
             ctx.add_host(name, "ptr")

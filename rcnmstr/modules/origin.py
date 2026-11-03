@@ -54,8 +54,9 @@ class OriginIP(Module):
         return sorted(c for c in cands if not self._is_cdn_ip(ctx, c))
 
     def _is_cdn_ip(self, ctx, ip):
+        from ..data.cdn_ranges import cdn_for_ip
         rec = ctx.ips.get(ip)
-        return bool(rec and rec.get("cdn"))
+        return bool((rec and rec.get("cdn")) or cdn_for_ip(ip))
 
     async def _baseline(self, ctx, host) -> Optional[dict]:
         for scheme in ("https", "http"):
