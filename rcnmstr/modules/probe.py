@@ -206,6 +206,11 @@ class HTTPProbe(Module):
                 targets.append((hostip, port, scheme))
         for t in targets:
             self.done.add(t)
+        # mark extra web targets as probed so the engine's feedback loop can reach its fixpoint
+        probed = getattr(ctx, "_probed_targets", None)
+        if probed is None:
+            probed = ctx._probed_targets = set()
+        probed |= set(ctx.web_targets) & self.done
         await gather_limited([self._probe(ctx, *t) for t in targets], ctx.cfg.concurrency)
 
     async def _probe(self, ctx, host, port, scheme):

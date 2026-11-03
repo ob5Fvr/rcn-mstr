@@ -235,3 +235,24 @@ async def test_wildcard_not_tagged_when_from_ct(fake_dns, tmp_path):
     fake_dns.set("real.example.com", "A", ["9.9.9.9"])  # same as wildcard IP
     ctx = await _run(fake_dns, tmp_path, ["ctseed", "resolve"])
     assert "wildcard" not in ctx.hosts["real.example.com"]["tags"]
+
+
+async def test_feedback_loop_terminates_with_web_targets(fake_dns, fake_http, tmp_path):
+    """web_targets must be marked probed so the loop reaches a fixpoint before max_rounds."""
+    fake_dns.set("example.com", "A", ["127.0.0.1"])
+    fake_http.route("/", 200, {"server": "nginx"}, "<html><title>x</title></html>")
+    from rcnmstr.base import Module
+
+    class AddWebTarget(Module):
+        name = "webt"
+        mode = "passive"
+        phase = 6
+        default = False
+        loop = True
+
+        async def run(self, ctx):
+            ctx.web_targets.add(("example.com", fake_http.port, "http"))
+    ctx = await _run(fake_dns, tmp_path, ["webt", "resolve", "probe"], http_port=fake_http.port, max_rounds=5)
+    # with the fix, web_targets_pending() is False once probed, so it converges early (< 5 rounds)
+    assert not ctx.web_targets_pending()
+    assert ctx.round <= 5
