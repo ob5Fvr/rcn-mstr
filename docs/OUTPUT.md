@@ -20,6 +20,15 @@ A downstream consumer should read `index.json` first.
 }
 ```
 
+## priority_targets.jsonl  (ranked triage list)
+```jsonc
+{ "host": "...", "score": <int>, "cdn": "...|null", "waf": "...|null",
+  "reasons": ["direct-origin (no CDN)", "keyword:admin", "open-ports:[6379]", "known-cves", "N findings"],
+  "top_findings": ["<finding id>", ...] }
+```
+Higher score = more attack-worthy. Derived from direct-origin, sensitive open ports, known CVEs,
+finding severities and juicy hostname keywords.
+
 ## hypotheses.jsonl  (ranked; read first)
 ```jsonc
 { "id": "…", "category": "forgotten_origin|cdn_bypass|shadow_staging|access_control_gap|takeover|

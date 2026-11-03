@@ -13,3 +13,4 @@ keys.txt
 *.log
 .venv/
 venv/
+dist/
