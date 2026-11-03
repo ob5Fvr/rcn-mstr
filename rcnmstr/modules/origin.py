@@ -6,7 +6,7 @@ import ipaddress
 from typing import Dict, List, Optional, Set
 
 from ..base import Module, gather_limited
-from ..http import fetch
+from ..http import api_get, fetch
 from ..util import hamming, html_title, is_public_ip, simhash
 
 
@@ -22,12 +22,42 @@ class OriginIP(Module):
                    if r.get("cdn") and r.get("dns") and r["dns"].get("resolved")]
         if not fronted:
             return
-        candidates = self._candidates(ctx)
+        candidates = set(self._candidates(ctx))
+        candidates |= await self._api_candidates(ctx)
+        candidates = sorted(c for c in candidates if not self._is_cdn_ip(ctx, c))
         self.log.info("origin: %d fronted hosts, %d candidate IPs", len(fronted), len(candidates))
         if not candidates:
             return
         for host in fronted:
             await self._check_host(ctx, host, candidates)
+
+    async def _api_candidates(self, ctx) -> Set[str]:
+        """Key-gated: Shodan favicon-hash search + Censys cert-name search surface likely origin IPs."""
+        out: Set[str] = set()
+        # Shodan: search by favicon hash of each probed service (http.favicon.hash:<mmh3>)
+        shodan_key = ctx.key("shodan_key")
+        if shodan_key:
+            hashes = {s["favicon_mmh3"] for s in ctx.services.values() if s.get("favicon_mmh3")}
+            for fh in list(hashes)[:5]:
+                data = await api_get(ctx.api, "https://api.shodan.io/shodan/host/search",
+                                     params={"key": shodan_key, "query": f"http.favicon.hash:{fh}"}, retries=1)
+                for m in (data or {}).get("matches", []):
+                    if m.get("ip_str"):
+                        out.add(m["ip_str"])
+        # Censys: search certs covering the apex to find hosts presenting them
+        cid, csec = ctx.key("censys_id"), ctx.key("censys_secret")
+        if cid and csec:
+            import base64 as _b64
+            auth = _b64.b64encode(f"{cid}:{csec}".encode()).decode()
+            for root in ctx.scope.roots[:3]:
+                data = await api_get(
+                    ctx.api, "https://search.censys.io/api/v2/hosts/search",
+                    params={"q": f"services.tls.certificates.leaf_data.names: {root}", "per_page": 50},
+                    headers={"Authorization": f"Basic {auth}"}, retries=1)
+                for h in ((data or {}).get("result") or {}).get("hits", []):
+                    if h.get("ip"):
+                        out.add(h["ip"])
+        return {ip for ip in out if is_public_ip(ip)}
 
     def _candidates(self, ctx) -> List[str]:
         from ..util import is_private_ip

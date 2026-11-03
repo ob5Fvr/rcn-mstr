@@ -97,3 +97,47 @@ def test_origin_candidate_gathering():
     assert "5.6.7.8" in cands and "9.9.9.9" in cands
     assert "104.16.1.1" not in cands        # CDN tagged
     assert "1.2.3.4" in cands               # from SPF ip4
+
+
+@pytest.mark.asyncio
+async def test_api_candidates_shodan_censys(monkeypatch):
+    import rcnmstr.modules.origin as O
+
+    async def fake_api_get(session, url, params=None, headers=None, **kw):
+        if "api.shodan.io" in url:
+            return {"matches": [{"ip_str": "11.22.33.44"}, {"ip_str": "55.66.77.88"}]}
+        if "censys.io" in url:
+            return {"result": {"hits": [{"ip": "99.88.77.66"}]}}
+        return None
+    monkeypatch.setattr(O, "api_get", fake_api_get)
+
+    class Ctx:
+        def __init__(self):
+            self.services = {"https://x": {"favicon_mmh3": 12345}}
+            self.api = object()
+
+            class S:
+                roots = ["example.com"]
+            self.scope = S()
+            self._keys = {"shodan_key": "k", "censys_id": "i", "censys_secret": "s"}
+
+        def key(self, n):
+            return self._keys.get(n)
+    cands = await O.OriginIP()._api_candidates(Ctx())
+    assert {"11.22.33.44", "55.66.77.88", "99.88.77.66"} <= cands
+
+
+@pytest.mark.asyncio
+async def test_api_candidates_no_keys():
+    from rcnmstr.modules.origin import OriginIP
+
+    class Ctx:
+        services = {}
+        api = object()
+
+        class scope:
+            roots = ["example.com"]
+
+        def key(self, n):
+            return None
+    assert await OriginIP()._api_candidates(Ctx()) == set()
