@@ -267,3 +267,13 @@ async def fake_http():
     await srv.start()
     yield srv
     await srv.stop()
+
+
+@pytest.fixture(scope="session")
+def selftest_run(tmp_path_factory):
+    """Run the full self-test pipeline ONCE per test session; shared read-only by many tests."""
+    import asyncio
+    from rcnmstr.selftest import run_self_test
+    d = str(tmp_path_factory.mktemp("selftest_shared"))
+    asyncio.run(run_self_test(d))
+    return d

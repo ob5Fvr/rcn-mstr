@@ -142,6 +142,36 @@ URLSCAN_KEY=...         CERTSPOTTER_KEY=...      OTX_KEY=...
 
 rcn-mstr is fully functional with **zero keys** — the keyless sources alone are comprehensive.
 
+## AI-harness integration
+
+The output is built to be consumed by a downstream AI agent. Three ways in:
+
+```bash
+# 1. ranked attack plan: each item has a self-contained agent_prompt
+rcn-mstr --agent-plan rcn-out/example-...
+
+# 2. query the run with a tiny DSL
+rcn-mstr --query rcn-out/example-... "select findings where severity is high"
+rcn-mstr --query rcn-out/example-... "select hosts where cdn is null and resolved is True"
+
+# 3. live read-only JSON API (localhost) for an agent to call
+rcn-mstr --serve rcn-out/example-...      # GET /hypotheses /findings /graph/node/{id} /query?q=...
+```
+
+Or from Python:
+
+```python
+from rcnmstr.store import ReconStore
+s = ReconStore.load("rcn-out/example-...")
+for h in s.agent_plan(top=10):
+    run_agent(h["agent_prompt"], targets=h["targets"])   # feed the chain to your agent
+s.subgraph_for_finding(fid)         # evidence subgraph for any finding
+s.neighbors("host:api.example.com") # traverse the correlation graph
+```
+
+A typical loop: `rcn-mstr target.com` → read `hypotheses.jsonl` → dispatch each `agent_prompt` to an
+autonomous agent → on the next scheduled run, `rcn-mstr --diff old new` surfaces only what changed.
+
 ## Architecture
 
 ```

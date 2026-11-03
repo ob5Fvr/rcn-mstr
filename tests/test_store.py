@@ -4,13 +4,9 @@ import pytest
 from rcnmstr.store import ReconStore
 
 
-@pytest.fixture(scope="module")
-def run_dir(tmp_path_factory):
-    import asyncio
-    from rcnmstr.selftest import run_self_test
-    d = str(tmp_path_factory.mktemp("run"))
-    asyncio.run(run_self_test(d))
-    return d
+@pytest.fixture
+def run_dir(selftest_run):
+    return selftest_run
 
 
 def test_load_and_counts(run_dir):
