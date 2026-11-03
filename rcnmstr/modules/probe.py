@@ -154,6 +154,10 @@ async def get_tls_cert(host: str, ip: str, port: int, timeout: float) -> Optiona
     ctxssl.check_hostname = False
     ctxssl.verify_mode = ssl.CERT_NONE
     try:
+        ctxssl.set_alpn_protocols(["h2", "http/1.1"])
+    except (NotImplementedError, ssl.SSLError):
+        pass
+    try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(ip, port, ssl=ctxssl, server_hostname=host), timeout)
     except (ssl.SSLError, OSError, asyncio.TimeoutError, ValueError):
@@ -162,9 +166,13 @@ async def get_tls_cert(host: str, ip: str, port: int, timeout: float) -> Optiona
         sslobj = writer.get_extra_info("ssl_object")
         der = sslobj.getpeercert(binary_form=True) if sslobj else None
         proto = sslobj.version() if sslobj else None
+        alpn = sslobj.selected_alpn_protocol() if sslobj else None
         if not der:
             return None
         info = parse_cert_der(der)
+        if alpn:
+            info["alpn"] = alpn
+            info["http2"] = alpn == "h2"
         info["tls_version"] = proto
         return info
     except Exception:  # noqa
@@ -249,6 +257,7 @@ class HTTPProbe(Module):
         # feedback: harvest hosts from body, redirect target, CORS ACAO, set-cookie domains
         self._harvest(ctx, host, body, r)
         await self._cors(ctx, base, svc)
+        await self._methods(ctx, base, svc)
         self._judge(ctx, svc, r)
         ctx.services[base] = svc
         rec = ctx.hosts.get(host)
@@ -258,6 +267,25 @@ class HTTPProbe(Module):
         ctx.emit("service", svc)
         # favicon (separate request, best-effort)
         await self._favicon(ctx, base, svc)
+
+    async def _methods(self, ctx, base, svc):
+        r = await fetch(ctx.probe, base + "/", method="OPTIONS", timeout=ctx.cfg.timeout, max_bytes=2000)
+        if not r:
+            return
+        allow = r.header("allow") or r.header("access-control-allow-methods")
+        if not allow:
+            return
+        methods = sorted({m.strip().upper() for m in allow.split(",") if m.strip()})
+        svc["allowed_methods"] = methods
+        dangerous = [m for m in methods if m in ("PUT", "DELETE", "TRACE", "CONNECT", "PATCH")]
+        if "TRACE" in dangerous:
+            ctx.finding("http_methods", "low", "high", base, "HTTP TRACE enabled (Cross-Site Tracing)",
+                        {"allow": methods}, self.name, ["methods", "trace"], dedupe_key="trace")
+        if any(m in dangerous for m in ("PUT", "DELETE", "PATCH")):
+            ctx.finding("http_methods", "low", "medium", base,
+                        f"Potentially dangerous HTTP methods advertised: {dangerous}",
+                        {"allow": methods}, self.name, ["methods"], dedupe_key="methods",
+                        next_steps=["Verify PUT/DELETE actually mutate (many servers advertise but reject)"])
 
     def _cookie_flags(self, cookies):
         out = []

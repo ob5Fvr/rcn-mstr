@@ -256,3 +256,19 @@ async def test_feedback_loop_terminates_with_web_targets(fake_dns, fake_http, tm
     # with the fix, web_targets_pending() is False once probed, so it converges early (< 5 rounds)
     assert not ctx.web_targets_pending()
     assert ctx.round <= 5
+
+
+async def test_http_methods_enumeration(fake_dns, fake_http, tmp_path):
+    fake_dns.set("example.com", "A", ["127.0.0.1"])
+
+    def handler(method, path, headers, body):
+        if method == "OPTIONS":
+            return (200, {"allow": "GET, POST, PUT, DELETE, TRACE, OPTIONS"}, b"")
+        return (200, {"server": "nginx"}, b"<html><title>x</title></html>")
+    fake_http.host_handler = handler
+    ctx = await _run(fake_dns, tmp_path, ["resolve", "probe"], http_port=fake_http.port)
+    svc = list(ctx.services.values())[0]
+    assert "PUT" in svc.get("allowed_methods", []) and "TRACE" in svc["allowed_methods"]
+    mf = [f for f in ctx.findings.values() if f["type"] == "http_methods"]
+    assert any("TRACE" in f["title"] for f in mf)
+    assert any("dangerous" in f["title"].lower() for f in mf)
