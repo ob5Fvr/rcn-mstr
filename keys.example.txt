@@ -1,0 +1,11 @@
+# rcn-mstr API keys (optional, all free-tier). Copy to keys.txt and fill in.
+# Usage: rcn-mstr example.com -k keys.txt    (or export as UPPERCASE env vars)
+VIRUSTOTAL_KEY=
+SECURITYTRAILS_KEY=
+CHAOS_KEY=
+SHODAN_KEY=
+FULLHUNT_KEY=
+GITHUB_TOKEN=
+URLSCAN_KEY=
+CERTSPOTTER_KEY=
+OTX_KEY=

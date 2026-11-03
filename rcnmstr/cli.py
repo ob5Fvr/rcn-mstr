@@ -15,6 +15,33 @@ from .context import Config
 from .engine import default_outdir, run
 
 
+def _load_config_file(path):
+    """Load a config file (JSON, or simple key: value / key = value lines). Returns a flat dict."""
+    if not path or not os.path.exists(path):
+        return {}
+    text = open(path, encoding="utf-8").read()
+    if path.endswith(".json") or text.lstrip().startswith("{"):
+        return json.loads(text)
+    cfg = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        for sep in (":", "="):
+            if sep in line:
+                k, v = line.split(sep, 1)
+                k, v = k.strip(), v.strip().strip('"\'')
+                if v.lower() in ("true", "false"):
+                    v = v.lower() == "true"
+                elif v.isdigit():
+                    v = int(v)
+                elif "," in v:
+                    v = [x.strip() for x in v.split(",") if x.strip()]
+                cfg[k.replace("-", "_")] = v
+                break
+    return cfg
+
+
 def _load_keys(path):
     keys = {}
     if path and os.path.exists(path):
@@ -62,6 +89,7 @@ def build_parser():
     p.add_argument("-s", "--scope", help="scope file (one host/pattern per line, ! prefix excludes)")
     p.add_argument("-x", "--exclude", help="exclude file")
     p.add_argument("-k", "--keys", help="API keys file (KEY=value or json)")
+    p.add_argument("--config", help="config file (json or key: value lines) providing CLI defaults")
     p.add_argument("--update-fingerprints", action="store_true", help="refresh takeover fingerprints and exit")
     p.add_argument("--self-test", action="store_true",
                    help="run the full pipeline against an in-process mock internet (no egress needed)")
@@ -92,7 +120,23 @@ async def _update_fp():
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    # config-file values become defaults for any option the user did not pass explicitly
+    if getattr(args, "config", None):
+        fileconf = _load_config_file(args.config)
+        explicit = set()
+        for tok in (argv if argv is not None else sys.argv[1:]):
+            if tok.startswith("--"):
+                explicit.add(tok[2:].split("=")[0].replace("-", "_"))
+            elif tok.startswith("-") and len(tok) == 2:
+                explicit.add(tok)
+        for k, v in fileconf.items():
+            k = k.replace("-", "_")
+            if k in ("keys", "api_keys"):
+                continue
+            if hasattr(args, k) and k not in explicit:
+                setattr(args, k, v)
     level = logging.WARNING if args.quiet else (logging.DEBUG if args.verbose >= 2 else logging.INFO)
     logging.basicConfig(level=level, format="%(asctime)s %(levelname).1s %(name)s: %(message)s",
                         datefmt="%H:%M:%S", stream=sys.stderr)
