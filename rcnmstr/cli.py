@@ -110,6 +110,8 @@ def build_parser():
     p.add_argument("--agent-plan", metavar="RUN_DIR",
                    help="print the ranked attack-hypothesis agent plan (JSON) from a run dir and exit")
     p.add_argument("-v", "--verbose", action="count", default=0)
+    p.add_argument("--fail-on", choices=["info","low","medium","high","critical"],
+                   help="exit non-zero (20) if any finding at or above this severity exists (for CI)")
     p.add_argument("-q", "--quiet", action="store_true")
     p.add_argument("--version", action="version", version=f"rcn-mstr {__version__}")
     return p
@@ -256,6 +258,12 @@ def main(argv=None):
           f"services={c.get('services',0)} findings={c.get('findings',0)}", file=sys.stderr)
     print(f"severity: {s.get('findings_by_severity', {})}", file=sys.stderr)
     print(f"output -> {ctx.outdir}/  (start at index.json)", file=sys.stderr)
+    if args.fail_on:
+        order = ["info","low","medium","high","critical"]
+        thr = order.index(args.fail_on)
+        if any(order.index(f["severity"]) >= thr for f in ctx.findings.values()):
+            print(f"fail-on: findings >= {args.fail_on} present", file=sys.stderr)
+            return 20
     return 0
 
 
