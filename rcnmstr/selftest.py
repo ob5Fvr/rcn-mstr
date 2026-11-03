@@ -8,9 +8,6 @@ S3 bucket reference, a CORS misconfig and a dangling CNAME, then runs rcn-mstr a
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-import socket
 import ssl
 import struct
 import sys

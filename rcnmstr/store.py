@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, Iterable, List, Optional
+from typing import List, Optional
 
 
 def _jsonl(path):

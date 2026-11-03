@@ -12,7 +12,6 @@ Pure and deterministic: `build_graph` takes a Context-like object and returns a 
 """
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple

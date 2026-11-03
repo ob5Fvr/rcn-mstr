@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import sys
-from typing import List
 
 from . import __version__
 from .base import ordered

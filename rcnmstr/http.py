@@ -7,11 +7,9 @@ import logging
 import socket
 import ssl
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
-
-import asyncio
 import time
 from collections import defaultdict
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import aiohttp

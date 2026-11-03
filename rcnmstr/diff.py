@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set
 
 
 def _load_jsonl(path: str) -> List[dict]:

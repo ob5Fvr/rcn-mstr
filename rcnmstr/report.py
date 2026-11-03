@@ -1,8 +1,10 @@
 """Write all raw outputs to the output directory at the end of a run."""
 from __future__ import annotations
 
-import json
+import logging
 import os
+
+log = logging.getLogger("rcnmstr.report")
 
 from .util import iso
 
@@ -16,7 +18,6 @@ def _conf(c):
 
 
 def write_outputs(ctx):
-    out = ctx.outdir
     # findings.jsonl (ranked)
     findings = sorted(ctx.findings.values(), key=lambda f: (-_sev(f["severity"]), -_conf(f["confidence"]),
                                                             f["type"]))
@@ -126,7 +127,7 @@ def _write_readme(ctx):
         f"- hosts: {c.get('hosts_total', 0)} total / {c.get('hosts_live', 0)} live "
         f"({c.get('hosts_direct', 0)} direct, {c.get('hosts_cdn', 0)} behind CDN)",
         f"- ips: {c.get('ips', 0)}   services: {c.get('services', 0)}   findings: {c.get('findings', 0)}",
-        f"- findings by severity: " + ", ".join(f"{k}={v}" for k, v in sev.items()) if sev else "- no findings",
+        ("- findings by severity: " + ", ".join(f"{k}={v}" for k, v in sev.items())) if sev else "- no findings",
         "",
         f"- attack hypotheses: {len(ctx.hypotheses)}   graph: {ctx.stats.get('graph', {}).get('nodes', 0)} nodes / "
         f"{ctx.stats.get('graph', {}).get('edges', 0)} edges",

@@ -1,7 +1,6 @@
 """Content discovery with soft-404 calibration: sensitive paths verified by content signature, not status alone."""
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -10,7 +9,6 @@ from ..http import fetch
 from ..util import hamming, simhash
 
 # path -> (severity, signature callable(status, headers, body) -> bool, tags, description)
-import base64 as _b64
 
 
 def _has(*subs):

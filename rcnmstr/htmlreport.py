@@ -8,7 +8,6 @@ from __future__ import annotations
 import html
 import json
 import os
-from typing import List
 
 
 def _load_jsonl(path):
