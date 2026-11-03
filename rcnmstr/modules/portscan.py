@@ -29,7 +29,8 @@ class PortScan(Module):
         for ip, rec in ctx.ips.items():
             if rec.get("cdn"):
                 continue
-            if not is_public_ip(ip) and not (ctx.cfg.allow_private and is_private_ip(ip)):
+            allowed_private = ctx.cfg.allow_private and (is_private_ip(ip) or ip.startswith("127."))
+            if not is_public_ip(ip) and not allowed_private:
                 continue
             if ip in self.done:
                 continue
