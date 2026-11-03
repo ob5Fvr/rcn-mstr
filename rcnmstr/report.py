@@ -72,6 +72,7 @@ def write_outputs(ctx):
     }
     ctx.write_json("run.json", meta)
     ctx.write_json("summary.json", ctx.stats.get("summary", {}))
+    ctx.write_jsonl("priority_targets.jsonl", ctx.stats.get("priority_targets", []))
 
     # top-level index for the downstream AI harness
     index = {
@@ -86,6 +87,7 @@ def write_outputs(ctx):
         ],
         "files": {
             "hypotheses": "hypotheses.jsonl",
+            "priority_targets": "priority_targets.jsonl",
             "findings": "findings.jsonl",
             "graph_nodes": "graph_nodes.jsonl",
             "graph_edges": "graph_edges.jsonl",

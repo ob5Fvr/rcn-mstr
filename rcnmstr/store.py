@@ -30,6 +30,7 @@ class ReconStore:
         self.index = self._json("index.json")
         self._findings = _jsonl(os.path.join(outdir, "findings.jsonl"))
         self._hypotheses = _jsonl(os.path.join(outdir, "hypotheses.jsonl"))
+        self._priority = _jsonl(os.path.join(outdir, "priority_targets.jsonl"))
         self._hosts = _jsonl(os.path.join(outdir, "hosts.jsonl"))
         self._ips = _jsonl(os.path.join(outdir, "ips.jsonl"))
         self._services = _jsonl(os.path.join(outdir, "services.jsonl"))
@@ -87,6 +88,9 @@ class ReconStore:
         if category:
             out = [h for h in out if h.get("category") == category]
         return out
+
+    def priority_targets(self, top: int = 20):
+        return self._priority[:top]
 
     def agent_plan(self, top: int = 10) -> List[dict]:
         """The ranked to-do list for an autonomous agent: title + prompt + targets."""

@@ -15,6 +15,7 @@ class FakeCtx:
         self.ips = {}
         self.services = {}
         self.findings = {}
+        self.stats = {}
 
     def add_host(self, h, dns=None, cdn=None, tags=(), waf=None, http=None):
         self.hosts[h] = {"host": h, "dns": dns, "cdn": cdn, "tags": list(tags), "sources": ["test"],
@@ -32,6 +33,9 @@ class FakeCtx:
                               "simhash": kw.get("simhash"), "tech": kw.get("tech", []),
                               "tls": kw.get("tls"), "favicon_mmh3": kw.get("favicon_mmh3"),
                               "waf": kw.get("waf")}
+
+    def live_hosts(self):
+        return [h for h,r in self.hosts.items() if r.get("http")]
 
     def add_finding(self, fid, **kw):
         self.findings[fid] = {"id": fid, "type": kw["type"], "severity": kw.get("severity", "info"),
@@ -197,3 +201,28 @@ def test_hyp_sensitive_product():
                   evidence={"product": "Jenkins"})
     hyps = _hyps(c)
     assert any(h["category"] == "sensitive_product" and "Jenkins" in h["title"] for h in hyps)
+
+
+def test_attack_score_ranking():
+    from rcnmstr.modules.analysis import Analysis
+    c = FakeCtx()
+    # direct host with open redis + a high finding
+    c.add_host("admin.example.com", dns={"resolved": True, "a": ["5.5.5.5"], "aaaa": [], "cname": []},
+               cdn=None, http=[{"url": "https://admin.example.com", "status": 200}])
+    c.add_ip("5.5.5.5", ports=[6379, 22], internetdb={"vulns": ["CVE-1"]})
+    c.ips["5.5.5.5"]["hosts"] = ["admin.example.com"]
+    c.add_finding("f1", type="content_exposure", severity="critical", confidence="high",
+                  target="https://admin.example.com/.env", title="env")
+    # a boring CDN host
+    c.add_host("www.example.com", dns={"resolved": True, "a": ["104.16.1.1"], "aaaa": [], "cname": []},
+               cdn="Cloudflare", http=[{"url": "https://www.example.com", "status": 200}])
+
+    def live():
+        return [h for h, r in c.hosts.items() if r.get("http")]
+    c.live_hosts = live
+    Analysis()._score_hosts(c)
+    pt = c.stats["priority_targets"]
+    assert pt[0]["host"] == "admin.example.com"
+    assert pt[0]["score"] > pt[-1]["score"]
+    assert any("open-ports" in r for r in pt[0]["reasons"])
+    assert any("known-cves" in r for r in pt[0]["reasons"])

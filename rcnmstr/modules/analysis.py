@@ -26,7 +26,53 @@ class Analysis(Module):
         self._cname_only(ctx)
         self._non_cdn_direct(ctx)
         self._tech_cve_hint(ctx)
+        self._score_hosts(ctx)
         self._summary(ctx)
+
+    def _score_hosts(self, ctx):
+        """Composite attack-surface score per live host -> a ranked target list for triage."""
+        sev_w = {"info": 1, "low": 3, "medium": 7, "high": 15, "critical": 25}
+        findings_by_host: Dict[str, list] = defaultdict(list)
+        for f in ctx.findings.values():
+            t = f["target"]
+            host = t.split("://")[1].split("/")[0].split(":")[0] if "://" in t else t.split(":")[0]
+            findings_by_host[host].append(f)
+        scored = []
+        for h in ctx.live_hosts():
+            rec = ctx.hosts[h]
+            score, reasons = 0, []
+            if not rec.get("cdn"):
+                score += 8
+                reasons.append("direct-origin (no CDN)")
+            if not rec.get("waf"):
+                score += 4
+            for kw in set(k for k in JUICY if k in h):
+                score += 3
+                reasons.append(f"keyword:{kw}")
+            # open sensitive ports on its IPs
+            for ip in (rec.get("dns") or {}).get("a", []):
+                iprec = ctx.ips.get(ip, {})
+                sensitive = set(iprec.get("ports", [])) & {22, 3389, 3306, 5432, 6379, 27017, 9200, 2375,
+                                                           23, 445, 5900, 11211, 1433}
+                if sensitive:
+                    score += 6
+                    reasons.append(f"open-ports:{sorted(sensitive)}")
+                if (iprec.get("internetdb") or {}).get("vulns"):
+                    score += 10
+                    reasons.append("known-cves")
+            fs = findings_by_host.get(h, [])
+            score += sum(sev_w.get(f["severity"], 1) for f in fs)
+            if fs:
+                reasons.append(f"{len(fs)} findings")
+            if rec.get("origin_ips"):
+                score += 12
+                reasons.append("origin-ip-found")
+            scored.append({"host": h, "score": score, "cdn": rec.get("cdn"), "waf": rec.get("waf"),
+                           "reasons": sorted(set(reasons)),
+                           "top_findings": sorted((f["id"] for f in fs))[:10]})
+            rec["attack_score"] = score
+        scored.sort(key=lambda x: -x["score"])
+        ctx.stats["priority_targets"] = scored[:50]
 
     def _interesting_hosts(self, ctx):
         for h, rec in ctx.hosts.items():
@@ -103,6 +149,7 @@ class Analysis(Module):
             "asns": dict(asn_count.most_common(15)),
             "cdn_vendors": dict(Counter(hosts[h]["cdn"] for h in cdn).most_common()),
             "open_ports": dict(Counter(p for r in ctx.ips.values() for p in r.get("ports", [])).most_common(30)),
+            "priority_targets": ctx.stats.get("priority_targets", [])[:20],
             "params_discovered": len(ctx.params),
             "paths_discovered": len(ctx.paths),
             "cloud_refs": sorted(ctx.cloud_refs)[:50],
