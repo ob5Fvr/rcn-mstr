@@ -210,7 +210,7 @@ async def test_output_files_written(fake_dns, fake_http, tmp_path):
     for f in ("index.json", "hosts.jsonl", "services.jsonl", "ips.jsonl", "run.json", "summary.json", "README.md"):
         assert os.path.exists(os.path.join(out, f)), f
     idx = json.load(open(os.path.join(out, "index.json")))
-    assert idx["schema"] == "rcn-mstr/1.0"
+    assert idx["schema"] == "rcn-mstr/1.1"
     assert idx["summary"]["counts"]["services"] == 1
     run_meta = json.load(open(os.path.join(out, "run.json")))
     assert run_meta["dns"]["mode"] == "udp"

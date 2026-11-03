@@ -201,7 +201,7 @@ async def test_random_scenarios(seed, tmp_path):
         assert ctx.scope.in_scope(h), f"out-of-scope host leaked: {h}"
     # 2. output is valid + complete
     idx = json.load(open(os.path.join(ctx.outdir, "index.json")))
-    assert idx["schema"] == "rcn-mstr/1.0"
+    assert idx["schema"] == "rcn-mstr/1.1"
     for line in open(os.path.join(ctx.outdir, "findings.jsonl")):
         f = json.loads(line)
         assert f["severity"] in ("info", "low", "medium", "high", "critical")

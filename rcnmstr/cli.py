@@ -65,6 +65,9 @@ def build_parser():
     p.add_argument("--update-fingerprints", action="store_true", help="refresh takeover fingerprints and exit")
     p.add_argument("--self-test", action="store_true",
                    help="run the full pipeline against an in-process mock internet (no egress needed)")
+    p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"),
+                   help="compare two run output directories and print attack-surface drift")
+    p.add_argument("--json", action="store_true", help="with --diff: emit JSON instead of a summary")
     p.add_argument("-v", "--verbose", action="count", default=0)
     p.add_argument("-q", "--quiet", action="store_true")
     p.add_argument("--version", action="version", version=f"rcn-mstr {__version__}")
@@ -104,6 +107,14 @@ def main(argv=None):
     if args.self_test:
         from .selftest import run_self_test
         return asyncio.run(run_self_test(args.output or "rcn-selftest-out"))
+    if args.diff:
+        from .diff import diff_runs, summarize
+        d = diff_runs(args.diff[0], args.diff[1])
+        if args.json:
+            print(json.dumps(d, indent=1, default=str))
+        else:
+            print(summarize(d))
+        return 0 if not d["has_changes"] else 10  # exit 10 => changes detected (useful for cron/CI)
     if not args.domains:
         build_parser().error("at least one domain is required (or use --list-modules/--update-fingerprints)")
 
