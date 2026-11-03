@@ -54,3 +54,30 @@ async def test_netintel_internetdb_vuln(fake_dns, tmp_path, monkeypatch):
     assert rec and rec["internetdb"]["vulns"] == ["CVE-2021-1", "CVE-2021-2"]
     assert "found.example.com" in ctx.hosts   # hostname fed back
     assert any(f["type"] == "known_vulns" for f in ctx.findings.values())
+
+
+@pytest.mark.asyncio
+async def test_ripestat_org_asn(fake_dns, tmp_path, monkeypatch):
+    from rcnmstr.context import Config
+    from rcnmstr.engine import run
+    from rcnmstr.base import Module
+
+    async def fake_api_get(session, url, params=None, **kw):
+        if "announced-prefixes" in url:
+            return {"data": {"prefixes": [{"prefix": "198.51.100.0/24"}, {"prefix": "203.0.113.0/24"}]}}
+        return None
+    monkeypatch.setattr(N, "api_get", fake_api_get)
+
+    class Seed(Module):
+        name = "rsseed"; mode = "passive"; phase = 5; default = False
+        async def run(self, ctx):
+            if ctx.round == 1:
+                ctx.add_host("h.example.com", "crtsh")
+                ctx.hosts["h.example.com"]["dns"] = {"resolved": True, "a": ["44.44.44.44"], "aaaa": [], "cname": []}
+                r = ctx.ip_rec("44.44.44.44")
+                r.update(asn="64500", as_name="EXAMPLE-ACME-AS", cdn=None)
+    cfg = Config(domains=["example.com"], output=str(tmp_path / "o"), modules=["rsseed", "ripestat"],
+                 resolvers=[fake_dns.resolver_str], tools=False, brute=False, max_rounds=1, timeout=2.0)
+    ctx = await run(cfg)
+    asn_f = [f for f in ctx.findings.values() if f["type"] == "asn_ownership"]
+    assert asn_f and "198.51.100.0/24" in str(asn_f[0]["evidence"])
