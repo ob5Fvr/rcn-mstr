@@ -105,6 +105,10 @@ def build_parser():
     p.add_argument("--json", action="store_true", help="with --diff: emit JSON instead of a summary")
     p.add_argument("--html", metavar="RUN_DIR",
                    help="(re)generate report.html from an existing run output directory and exit")
+    p.add_argument("--query", nargs=2, metavar=("RUN_DIR", "QUERY"),
+                   help="run a store query against a run dir, e.g. --query out \"select hosts where cdn is null\"")
+    p.add_argument("--agent-plan", metavar="RUN_DIR",
+                   help="print the ranked attack-hypothesis agent plan (JSON) from a run dir and exit")
     p.add_argument("-v", "--verbose", action="count", default=0)
     p.add_argument("-q", "--quiet", action="store_true")
     p.add_argument("--version", action="version", version=f"rcn-mstr {__version__}")
@@ -163,6 +167,15 @@ def main(argv=None):
     if args.html:
         from .htmlreport import write_html
         print(write_html(args.html))
+        return 0
+    if args.query:
+        from .store import ReconStore
+        rows = ReconStore.load(args.query[0]).query(args.query[1])
+        print(json.dumps(rows, indent=1, default=str))
+        return 0
+    if args.agent_plan:
+        from .store import ReconStore
+        print(json.dumps(ReconStore.load(args.agent_plan).agent_plan(top=50), indent=1, default=str))
         return 0
     if args.diff:
         from .diff import diff_runs, summarize

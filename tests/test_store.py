@@ -81,3 +81,23 @@ def test_load_missing_dir():
     import pytest
     with pytest.raises(FileNotFoundError):
         ReconStore.load("/no/such/dir/xyz")
+
+
+def test_cli_query_and_agent_plan(run_dir, capsys):
+    import json
+    from rcnmstr.cli import main
+    assert main(["--query", run_dir, "select hosts where resolved is True"]) == 0
+    out = capsys.readouterr().out
+    rows = json.loads(out)
+    assert isinstance(rows, list) and all(r["resolved"] for r in rows)
+    assert main(["--agent-plan", run_dir]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan and "agent_prompt" in plan[0]
+
+
+def test_cli_html_regen(run_dir, capsys):
+    import os
+    from rcnmstr.cli import main
+    assert main(["--html", run_dir]) == 0
+    path = capsys.readouterr().out.strip()
+    assert path.endswith("report.html") and os.path.exists(path)
