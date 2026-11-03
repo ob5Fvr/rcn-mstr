@@ -109,6 +109,8 @@ def build_parser():
                    help="run a store query against a run dir, e.g. --query out \"select hosts where cdn is null\"")
     p.add_argument("--agent-plan", metavar="RUN_DIR",
                    help="print the ranked attack-hypothesis agent plan (JSON) from a run dir and exit")
+    p.add_argument("--serve", metavar="RUN_DIR", help="serve a read-only JSON API over a run dir (for AI harness)")
+    p.add_argument("--serve-port", type=int, default=8777)
     p.add_argument("-v", "--verbose", action="count", default=0)
     p.add_argument("--fail-on", choices=["info","low","medium","high","critical"],
                    help="exit non-zero (20) if any finding at or above this severity exists (for CI)")
@@ -178,6 +180,10 @@ def main(argv=None):
     if args.agent_plan:
         from .store import ReconStore
         print(json.dumps(ReconStore.load(args.agent_plan).agent_plan(top=50), indent=1, default=str))
+        return 0
+    if args.serve:
+        from .serve import serve as _serve
+        _serve(args.serve, port=args.serve_port)
         return 0
     if args.diff:
         from .diff import diff_runs, summarize
