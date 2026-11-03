@@ -110,7 +110,18 @@ class FakeDNS:
             lambda: self._UDP(self), local_addr=("127.0.0.1", 0))
         self.udp_port = self.udp_transport.get_extra_info("socket").getsockname()[1]
         # DNS uses the same port number for UDP and TCP; bind TCP to the same port.
-        self.tcp_server = await asyncio.start_server(self._handle_tcp, "127.0.0.1", self.udp_port)
+        # reuse_address avoids a rare Errno 98 when a freed UDP port's TCP peer is still in TIME_WAIT.
+        for attempt in range(5):
+            try:
+                self.tcp_server = await asyncio.start_server(
+                    self._handle_tcp, "127.0.0.1", self.udp_port, reuse_address=True)
+                break
+            except OSError:
+                # the chosen UDP port's TCP side is briefly unavailable; pick a fresh UDP port and retry
+                self.udp_transport.close()
+                self.udp_transport, _ = await asyncio.get_running_loop().create_datagram_endpoint(
+                    lambda: self._UDP(self), local_addr=("127.0.0.1", 0))
+                self.udp_port = self.udp_transport.get_extra_info("socket").getsockname()[1]
         self.tcp_port = self.udp_port
         return self
 
