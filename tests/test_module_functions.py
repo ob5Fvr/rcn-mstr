@@ -201,3 +201,17 @@ def test_endpoint_regex():
     text = 'fetch("/api/v1/users/profile"); url:"/admin/settings.json"'
     eps = [m.group(1) for m in jsanalysis.ENDPOINT_RE.finditer(text)]
     assert any("/api/v1/users" in e for e in eps)
+
+
+def test_detect_tech_version_extraction():
+    t = probe.detect_tech(200, {"server": "nginx/1.18.0", "x-powered-by": "PHP/8.2.4"}, [], "")
+    by = {x["name"]: x for x in t}
+    assert by["Nginx"]["version"] == "1.18.0"
+    assert by["PHP"]["version"] == "8.2.4"
+    assert by["Nginx"]["cpe"].endswith("1.18.0")
+
+
+def test_detect_tech_version_from_generator():
+    t = probe.detect_tech(200, {}, [], '<meta name="generator" content="WordPress 6.4.2">/wp-content/')
+    wp = [x for x in t if x["name"] == "WordPress"][0]
+    assert wp.get("version") == "6.4.2"

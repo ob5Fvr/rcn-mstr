@@ -83,9 +83,38 @@ def detect_tech(status: int, headers: Dict[str, str], cookies: List[str], body: 
                     hit = "html"
                     break
         if hit:
-            found.append({"name": name, "category": sig.get("category", ""), "via": hit,
-                          **({"cpe": sig["cpe"]} if sig.get("cpe") else {})})
+            entry = {"name": name, "category": sig.get("category", ""), "via": hit}
+            ver = _extract_version(name, headers, gens, body_l)
+            if ver:
+                entry["version"] = ver
+            if sig.get("cpe"):
+                entry["cpe"] = sig["cpe"] + (f":{ver}" if ver else "")
+            found.append(entry)
     return found
+
+
+_VER_RE = re.compile(r"[/ ]v?(\d+(?:\.\d+){1,3})")
+
+
+def _extract_version(name, headers, gens, body):
+    """Best-effort product version from Server/X-Powered-By or a meta generator."""
+    probes = []
+    low = name.lower()
+    for h in ("server", "x-powered-by", "x-aspnet-version", "x-generator"):
+        if headers.get(h):
+            probes.append(headers[h])
+    probes += gens
+    for p in probes:
+        if low.split()[0][:4] in p.lower() or name.split()[0].lower() in p.lower():
+            m = _VER_RE.search(p)
+            if m:
+                return m.group(1)
+    # generic: any X.Y in Server header when the tech came from the server header
+    for p in probes[:2]:
+        m = _VER_RE.search(p)
+        if m:
+            return m.group(1)
+    return None
 
 
 def parse_cert_der(der: bytes) -> dict:
